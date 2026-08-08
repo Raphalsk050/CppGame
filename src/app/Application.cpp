@@ -95,8 +95,11 @@ Application::Application(const Options& options)
     status_ = "TAB abre e fecha este painel";
 
     // Comeca acima do nivel do chao, olhando para o horizonte.
-    camera_.position = {0.0f, 28.0f, 0.0f};
-    camera_.target = {30.0f, 22.0f, 30.0f};
+    // Acima do relevo tipico (o terreno vai de ~51 a ~254 m, com o mar em 62).
+    // O valor anterior, 28, ficava ABAIXO do nivel do mar depois que a escala
+    // do mundo passou para metros - o jogo abria enterrado.
+    camera_.position = {0.0f, 210.0f, 0.0f};
+    camera_.target = {90.0f, 160.0f, 90.0f};
     camera_.up = {0.0f, 1.0f, 0.0f};
     camera_.fovy = 70.0f;
     camera_.projection = CAMERA_PERSPECTIVE;
