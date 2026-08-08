@@ -42,6 +42,7 @@ in vec4 fragColor;
 uniform vec4 colDiffuse;
 uniform vec3 viewPosition;
 uniform vec3 lightDirection;
+uniform float fogDistance;
 
 out vec4 finalColor;
 
@@ -51,30 +52,40 @@ void main()
     vec3 toLight = normalize(-lightDirection);
     vec3 toView = normalize(viewPosition - fragPosition);
 
-    // Difusa Lambert com wrap: o termo nao cai a zero abruptamente, o que
-    // evita que o lado sombreado do terreno vire uma silhueta preta chapada.
-    float diffuse = max(dot(normal, toLight) * 0.5 + 0.5, 0.0);
-    diffuse = diffuse * diffuse;
+    // Difusa com wrap PEQUENO. A versao anterior usava wrap total
+    // (dot*0.5+0.5), que ilumina ate as faces viradas para longe do sol e
+    // achata o relevo inteiro; o wrap curto mantem o lado sombreado escuro sem
+    // virar silhueta preta.
+    float lambert = dot(normal, toLight);
+    float diffuse = max(lambert * 0.72 + 0.28, 0.0);
 
     // Ambiente hemisferico: luz do ceu por cima, rebote do chao por baixo.
     // Custa quase nada e da muito mais leitura de volume que um ambiente
-    // constante, principalmente dentro das cavernas.
+    // constante, principalmente dentro das cavernas. Mantido BAIXO de
+    // proposito - ambiente forte lava a cor da superficie ate o branco.
     float sky = 0.5 + 0.5 * normal.y;
-    vec3 ambient = mix(vec3(0.10, 0.11, 0.15), vec3(0.42, 0.48, 0.60), sky);
+    vec3 ambient = mix(vec3(0.17, 0.19, 0.23), vec3(0.36, 0.40, 0.48), sky);
 
     // Especular Blinn-Phong bem discreta, so para dar relevo as cristas.
     vec3 halfway = normalize(toLight + toView);
     float specular = pow(max(dot(normal, halfway), 0.0), 32.0) * 0.12;
 
     vec3 base = fragColor.rgb * colDiffuse.rgb;
-    vec3 lit = base * (ambient + vec3(1.0, 0.96, 0.88) * diffuse * 0.85);
+    vec3 lit = base * (ambient + vec3(1.0, 0.97, 0.90) * diffuse * 0.92);
     lit += vec3(specular);
 
     // Neblina pela distancia: esconde a borda onde os chunks acabam, que sem
     // isso aparece como um recorte reto no horizonte.
+    //
+    // A queda e EXPONENCIAL AO QUADRADO, nao exponencial simples. A versao
+    // anterior, 1-exp(-d*0.0028), ja punha 24% de neblina a 100 unidades e 66%
+    // na borda da visao - era ela, e nao a paleta, a maior responsavel pelo
+    // terreno sair lavado. Com o quadrado, o primeiro terco da distancia fica
+    // praticamente limpo e a neblina se concentra no horizonte.
     float distance = length(viewPosition - fragPosition);
-    float fog = 1.0 - exp(-distance * 0.0028);
-    lit = mix(lit, vec3(0.62, 0.74, 0.90), clamp(fog, 0.0, 1.0));
+    float f = distance / max(fogDistance, 1.0);
+    float fog = 1.0 - exp(-f * f);
+    lit = mix(lit, vec3(0.66, 0.78, 0.93), clamp(fog, 0.0, 1.0));
 
     finalColor = vec4(lit, 1.0);
 }
@@ -87,6 +98,8 @@ SurfaceShader::SurfaceShader() {
 
     viewPositionLoc_ = GetShaderLocation(shader_, "viewPosition");
     lightDirectionLoc_ = GetShaderLocation(shader_, "lightDirection");
+    fogDistanceLoc_ = GetShaderLocation(shader_, "fogDistance");
+    SetFogDistance(600.0f);
 
     // Sol fixo, vindo de cima e de lado. Direcao normalizada aqui para o
     // fragment shader nao ter que fazer isso por pixel.
@@ -112,6 +125,11 @@ void SurfaceShader::ApplyTo(Model& model) const {
 void SurfaceShader::SetViewPosition(Vector3 position) const {
     if (!IsValid() || viewPositionLoc_ == -1) return;
     SetShaderValue(shader_, viewPositionLoc_, &position, SHADER_UNIFORM_VEC3);
+}
+
+void SurfaceShader::SetFogDistance(float distance) const {
+    if (!IsValid() || fogDistanceLoc_ == -1) return;
+    SetShaderValue(shader_, fogDistanceLoc_, &distance, SHADER_UNIFORM_FLOAT);
 }
 
 }  // namespace render

@@ -28,6 +28,11 @@ public:
     // A especular depende da posicao da camera, entao muda a cada frame.
     void SetViewPosition(Vector3 position) const;
 
+    // Distancia em que a neblina fecha. Deve acompanhar a distancia de
+    // renderizacao: neblina curta demais esconde terreno carregado, longa
+    // demais deixa a borda dos chunks aparecer como recorte reto.
+    void SetFogDistance(float distance) const;
+
     bool IsValid() const;
 
     Shader Get() const { return shader_; }
@@ -36,6 +41,7 @@ private:
     Shader shader_{};
     int viewPositionLoc_ = -1;
     int lightDirectionLoc_ = -1;
+    int fogDistanceLoc_ = -1;
 };
 
 }  // namespace render

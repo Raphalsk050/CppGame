@@ -30,12 +30,26 @@ namespace world {
 //  Para um mundo plano: zere hillHeight e mountainHeight.
 // ===========================================================================
 
-// Um bioma define so paleta. A influencia dele no relevo foi removida de
-// proposito - ver a regra acima.
+// Um bioma e um PONTO no diagrama temperatura x umidade, com a paleta dele.
+//
+// A posicao no diagrama e o que permite misturar biomas de forma continua em
+// vez de escolher um. Escolha discreta produz fronteira dura e mancha de cor
+// chapada - a marca registrada de bioma gerado por if/else. Aqui cada ponto do
+// mundo recebe uma media ponderada de TODOS os biomas, pesada pela distancia
+// no diagrama, entao nao existe fronteira: existe gradiente.
+// Um bioma e um PONTO no diagrama de Whittaker, em unidades FISICAS.
+//
+// Whittaker (1975) classifica os biomas terrestres por temperatura media anual
+// e precipitacao media anual - e a classificacao padrao em ecologia. Usar as
+// coordenadas reais, em vez de dois numeros inventados em [0,1], faz o mapa de
+// biomas herdar as relacoes verdadeiras: nao existe floresta tropical a -5 C,
+// nem tundra com 300 cm de chuva.
 struct Biome {
     const char* name;
-    Color lowland;  // vegetacao ou areia da baixada
-    Color rock;     // rocha exposta nas encostas
+    float temperature;    // media anual, em graus Celsius
+    float precipitation;  // media anual, em cm/ano
+    Color lowland;        // vegetacao ou solo exposto da baixada
+    Color rock;           // rocha exposta nas encostas
 };
 
 struct TerrainSettings {
@@ -50,16 +64,23 @@ struct TerrainSettings {
 
     // --- COLINAS ---------------------------------------------------------
     // Ondulacao de base, presente no mundo inteiro.
-    float hillHeight = 13.0f;
-    float hillScale = 0.005f;
+    //
+    // A FREQUENCIA importa tanto quanto a amplitude: 13 unidades espalhadas por
+    // 200 (escala 0.005) dao ~7% de inclinacao, que le como duna, nao como
+    // colina. Encurtar o comprimento de onda e o que produz encosta de verdade.
+    float hillHeight = 17.0f;
+    float hillScale = 0.011f;
     int hillOctaves = 4;
 
     // --- MONTANHAS -------------------------------------------------------
-    // Ruido ridged (cristas afiadas) elevado ao quadrado: achata os vales e
-    // deixa so as cristas subirem.
-    float mountainHeight = 62.0f;
-    float mountainScale = 0.0018f;
-    int mountainOctaves = 5;
+    // Ruido ridged (cristas afiadas) elevado a mountainSharpness.
+    float mountainHeight = 105.0f;
+    float mountainScale = 0.0042f;
+    int mountainOctaves = 4;
+    // Expoente da crista. 2.0 achata os flancos e so o pico sobe, o que da
+    // morros arredondados; 1.3 mantem a encosta inteira ingreme, que e o
+    // perfil das montanhas do Minecraft.
+    float mountainSharpness = 1.3f;
 
     // --- RIOS E VALES ----------------------------------------------------
     // O canal segue onde um ruido 2D cruza zero: como esse cruzamento e uma
@@ -68,20 +89,55 @@ struct TerrainSettings {
     // entorno em rampa - sem ele o rio seria uma valeta cortada em terreno
     // plano em vez de correr no fundo de um vale.
     float riverScale = 0.0016f;
-    float riverWidth = 0.030f;   // largura do canal
-    float valleyWidth = 0.190f;  // largura do vale ao redor
-    float riverDepth = 9.0f;     // quanto o leito desce abaixo do nivel do mar
-    float valleyDepth = 9.0f;    // quanto o vale rebaixa o entorno
+    float riverWidth = 0.022f;   // largura do canal
+    float valleyWidth = 0.150f;  // largura do vale ao redor
+    float riverDepth = 7.0f;     // quanto o leito desce abaixo do nivel do mar
+    float valleyDepth = 11.0f;   // quanto o vale rebaixa o entorno
     // Rios perdem forca onde ha montanha, senao cortariam canyons pelos picos.
     float riverMountainResistance = 0.75f;
+    // Modula a largura ao longo do curso. Sem isto o rio tem espessura
+    // constante do inicio ao fim, que e a marca mais obvia de "gerado por
+    // formula" - rio de verdade alarga e estreita.
+    float riverWidthVariation = 0.65f;
+    float riverWidthScale = 0.008f;
+
+    // COMPORTA DE ALTITUDE - nao remova.
+    // O rio escava puxando a altura ate o leito, e esse puxao e proporcional a
+    // DIFERENCA entre os dois. Numa montanha de 100 unidades a diferenca e
+    // enorme, e mesmo um canal enfraquecido abria fendas verticais de dezenas
+    // de unidades cortando o pico ao meio. Aqui o rio desaparece acima de
+    // riverAltitudeLimit, que e o que faz sentido fisicamente: rio corre em
+    // terra baixa, nao no alto da serra.
+    float riverAltitudeLimit = 20.0f;
+    // Transicao LONGA. Curta demais, o rio termina num toco abrupto encravado
+    // na encosta; longa, ele afina at sumir como cabeceira de riacho.
+    float riverAltitudeFade = 55.0f;
+
+    // Concavidade minima para haver rio. Este e o termo que resolve o
+    // problema de fundo: um contorno de ruido nao sabe o que e "para baixo", e
+    // por isso atravessava divisor de aguas e morro. Medindo se o terreno esta
+    // localmente REBAIXADO em relacao a vizinhanca, o rio so aparece onde a
+    // agua de fato se acumularia - e o fundo de vale ja desce sozinho, entao o
+    // curso passa a acompanhar o relevo sem simular escoamento.
+    float riverConcavityBias = 0.35f;
+    float riverConcavitySample = 26.0f;  // distancia de amostragem, em unidades
 
     // --- RELEVO CONTINENTAL ----------------------------------------------
     // Campo CONTINUO em [0,1] que decide onde ha cordilheira e onde ha
     // planicie. Substitui o antigo multiplicador por bioma: como varia
     // suavemente, a montanha nasce e morre em rampa em vez de degrau.
-    float reliefScale = 0.0011f;
-    float reliefLow = 0.42f;   // abaixo disto: planicie
-    float reliefHigh = 0.78f;  // acima disto: amplitude cheia
+    // A banda ESTREITA e o que separa planicie de cordilheira. Larga demais,
+    // tudo vira terreno medio e a paisagem fica sem contraste.
+    float reliefScale = 0.0018f;
+    float reliefLow = 0.46f;   // abaixo disto: planicie
+    float reliefHigh = 0.60f;  // acima disto: amplitude cheia
+
+    // --- EROSAO ----------------------------------------------------------
+    // Campo continuo que ACHATA o relevo onde e alto, criando os grandes
+    // trechos planos que contrastam com as encostas. E o parametro que o
+    // Minecraft 1.18 usa para o mesmo fim.
+    float erosionScale = 0.0009f;
+    float erosionStrength = 0.75f;
 
     // --- TERRACOS --------------------------------------------------------
     // Camadas horizontais de rocha, no estilo mesa/planalto estratificado.
@@ -102,19 +158,73 @@ struct TerrainSettings {
     float caveDepthBelowSurface = 6.0f;
 
     // --- CORES POR ALTITUDE ----------------------------------------------
-    // Alturas RELATIVAS ao nivel do mar, com transicao suave entre faixas. E
-    // daqui que vem a leitura de altitude da paisagem: areia, vegetacao,
-    // rocha, neve.
-    float beachHeight = 2.5f;
-    float grassHeight = 26.0f;
-    float rockHeight = 58.0f;
+    // Alturas RELATIVAS ao nivel do mar, com transicao suave entre faixas.
+    //
+    // A FAIXA DE AREIA TEM DE SER ESTREITA. Com beach=2.5 e grass=26, terreno
+    // a 11 unidades caia em 36% do caminho areia->grama: ou seja, quase tudo
+    // ficava cor de areia, e a neblina lavava isso ate o branco. A vegetacao
+    // tem de comecar logo acima da linha d'agua, como na natureza.
+    float beachHeight = 1.5f;
+    float grassHeight = 6.0f;
+    float rockHeight = 48.0f;
+    float snowHeight = 78.0f;
     // Escurece faixas horizontais dentro da rocha, na mesma cadencia dos
     // terracos. E o detalhe que faz a parede parecer estratificada.
     float strataContrast = 0.16f;
 
-    // --- BIOMAS ----------------------------------------------------------
-    float temperatureScale = 0.0009f;
-    float humidityScale = 0.0013f;
+    // --- CLIMA -----------------------------------------------------------
+    // O clima e derivado do RELEVO, nao sorteado independente dele. Tres
+    // mecanismos reais, cada um com a constante fisica correspondente.
+
+    // Escala do mundo. Nada disso teria magnitude correta sem ela: com 1
+    // unidade = 1 metro, uma montanha de 100 unidades esfriaria 0,65 C, o que
+    // e invisivel. Tratando cada unidade como algumas dezenas de metros, o
+    // gradiente altitudinal passa a valer o que vale na natureza.
+    float metersPerUnit = 30.0f;
+
+    // GRADIENTE TERMICO VERTICAL. O ar esfria ~6,5 C por 1000 m de altitude
+    // (environmental lapse rate). E o motivo fisico de haver neve e tundra no
+    // alto de montanha mesmo no tropico - e, no gerador anterior, o motivo de
+    // as montanhas ficarem verdes ate o cume.
+    float lapseRatePerKm = 6.5f;
+
+    // Temperatura ao nivel do mar: media e variacao regional.
+    float seaLevelTemperature = 22.0f;  // C
+    float temperatureVariation = 14.0f;  // C de amplitude regional
+    float temperatureScale = 0.0007f;
+
+    // Precipitacao de base, antes do efeito orografico.
+    float basePrecipitation = 110.0f;  // cm/ano
+    float precipitationVariation = 90.0f;
+    float humidityScale = 0.0011f;
+
+    // EFEITO OROGRAFICO. Ar umido forcado a subir uma serra se resfria,
+    // condensa e chove na encosta a barlavento; do outro lado desce ja seco -
+    // a sombra de chuva. E o mecanismo que poe deserto ao lado de floresta sem
+    // precisar de nenhum ruido extra.
+    float windDirectionX = 0.86f;  // vetor do vento dominante
+    float windDirectionZ = 0.51f;
+    float orographicDistance = 260.0f;  // ate onde procurar a serra a barlavento
+    float orographicStrength = 0.85f;   // 1 = sombra total atras da serra
+    float windwardGain = 90.0f;         // cm/ano extra na encosta que sobe
+
+    // DOMAIN WARPING: deforma as coordenadas ANTES de amostrar temperatura e
+    // umidade. Sem isto, as manchas de bioma sao as curvas de nivel de um fbm
+    // - bolhas lisas e arredondadas, que o olho reconhece na hora como ruido.
+    // Com o warp elas ganham reentrancias, peninsulas e ilhas.
+    float biomeWarpStrength = 320.0f;
+    float biomeWarpScale = 0.0016f;
+
+    // MOSQUEADO: variacao de alta frequencia DENTRO do mesmo bioma, o que na
+    // referencia aerea aparece como manchas de mata mais escura no meio do
+    // pasto. Sem isto cada bioma e um campo de cor perfeitamente uniforme.
+    float biomeMottleStrength = 0.40f;
+    float biomeMottleScale = 0.020f;
+
+    // Concentracao da mistura entre biomas. Baixo demais e tudo vira uma media
+    // acinzentada; alto demais volta a parecer escolha discreta, com
+    // fronteira visivel.
+    float biomeBlendSharpness = 2.6f;
 };
 
 class TerrainGenerator {
@@ -137,7 +247,23 @@ public:
         return DensityAt(p, SurfaceHeight(p.x, p.z));
     }
 
+    // Bioma DOMINANTE em (x, z). Serve para rotular no HUD; a cor NAO sai
+    // daqui, porque uma escolha discreta produziria fronteira visivel.
     const Biome& PickBiome(float x, float z) const;
+
+    // Clima num ponto. Publico porque e a consulta que valida a fisica do
+    // gerador e que o posicionamento de estruturas vai precisar.
+    void ClimateAt(float x, float z, float altitude, float& temperature,
+                   float& precipitation) const {
+        Climate(x, z, altitude, temperature, precipitation);
+    }
+
+    // Paleta ja misturada entre todos os biomas, continua em (x, z).
+    struct BiomePalette {
+        Color lowland;
+        Color rock;
+    };
+    BiomePalette BlendBiomes(float x, float z, float altitude) const;
 
     // Cor de um vertice ja gerado. Roda por vertice, nao por ponto de grade.
     Color SurfaceColor(Vector3 position, Vector3 normal) const;
@@ -154,9 +280,32 @@ private:
     // Fator continuo de relevo em [0,1]. Ver o comentario de reliefScale.
     float ReliefScale(float x, float z) const;
 
+    // Quanto achatar o relevo aqui, em [0,1]. Ver o comentario de erosionScale.
+    float Erosion(float x, float z) const;
+
+    // Temperatura e umidade em [0,1], ja com as coordenadas deformadas pelo
+    // domain warp. Ponto unico de leitura do clima: PickBiome e BlendBiomes
+    // tem de concordar, senao o rotulo do HUD nao bate com a cor da tela.
+    // Clima derivado do relevo. `altitude` entra pelo lapse rate.
+    void Climate(float x, float z, float altitude, float& temperature,
+                 float& precipitation) const;
+
+    // Relevo grosseiro (2 oitavas), so para o calculo orografico.
+    float CoarseHeight(float x, float z) const;
+
     // Proximidade do eixo do rio, em [0,1]: 1 no centro do canal, 0 fora.
     // `valley` sai com a largura do vale, `channel` com a do leito.
-    void RiverFactors(float x, float z, float& valley, float& channel) const;
+    void RiverFactors(float x, float z, float gate, float& valley,
+                      float& channel) const;
+
+    // Relevo SEM os rios. Existe separado porque a concavidade precisa medir a
+    // vizinhanca, e usar SurfaceHeight ali seria recursao infinita.
+    float BaseHeight(float x, float z) const;
+
+    // Quanto o terreno esta rebaixado em relacao a vizinhanca. Positivo em
+    // fundo de vale, negativo em crista. E o substituto local do calculo de
+    // escoamento: onde a agua se acumularia.
+    float Concavity(float x, float z) const;
 
     // Quantiza a altura em camadas, so acima de terraceStart - a baixada
     // continua lisa.

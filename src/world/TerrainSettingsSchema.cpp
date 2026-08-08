@@ -26,6 +26,8 @@ constexpr FloatField kFloatFields[] = {
      &TerrainSettings::mountainHeight, 0.0f, 200.0f},
     {"Montanhas", "mountainScale", "frequencia",
      &TerrainSettings::mountainScale, 0.0002f, 0.020f},
+    {"Montanhas", "mountainSharpness", "perfil da encosta",
+     &TerrainSettings::mountainSharpness, 0.6f, 3.0f},
 
     {"Relevo continental", "reliefScale", "frequencia",
      &TerrainSettings::reliefScale, 0.0002f, 0.010f},
@@ -33,6 +35,11 @@ constexpr FloatField kFloatFields[] = {
      0.0f, 1.0f},
     {"Relevo continental", "reliefHigh", "fim", &TerrainSettings::reliefHigh,
      0.0f, 1.0f},
+
+    {"Erosao", "erosionStrength", "intensidade",
+     &TerrainSettings::erosionStrength, 0.0f, 1.0f},
+    {"Erosao", "erosionScale", "frequencia", &TerrainSettings::erosionScale,
+     0.0002f, 0.010f},
 
     {"Rios e vales", "riverScale", "frequencia", &TerrainSettings::riverScale,
      0.0002f, 0.010f},
@@ -46,6 +53,14 @@ constexpr FloatField kFloatFields[] = {
      &TerrainSettings::valleyDepth, 0.0f, 40.0f},
     {"Rios e vales", "riverMountainResistance", "resistencia da montanha",
      &TerrainSettings::riverMountainResistance, 0.0f, 1.0f},
+    {"Rios e vales", "riverWidthVariation", "variacao de largura",
+     &TerrainSettings::riverWidthVariation, 0.0f, 1.0f},
+    {"Rios e vales", "riverWidthScale", "escala da variacao",
+     &TerrainSettings::riverWidthScale, 0.001f, 0.050f},
+    {"Rios e vales", "riverAltitudeLimit", "altitude maxima",
+     &TerrainSettings::riverAltitudeLimit, -20.0f, 120.0f},
+    {"Rios e vales", "riverAltitudeFade", "transicao de altitude",
+     &TerrainSettings::riverAltitudeFade, 1.0f, 60.0f},
 
     {"Terracos", "terraceStrength", "intensidade",
      &TerrainSettings::terraceStrength, 0.0f, 1.0f},
@@ -71,6 +86,8 @@ constexpr FloatField kFloatFields[] = {
      &TerrainSettings::grassHeight, 0.0f, 90.0f},
     {"Cores por altitude", "rockHeight", "rocha ate",
      &TerrainSettings::rockHeight, 0.0f, 160.0f},
+    {"Cores por altitude", "snowHeight", "neve a partir de",
+     &TerrainSettings::snowHeight, 0.0f, 250.0f},
     {"Cores por altitude", "strataContrast", "contraste dos estratos",
      &TerrainSettings::strataContrast, 0.0f, 0.6f},
 

@@ -91,6 +91,7 @@ Application::Application(const Options& options)
     chunks_.SetShader(shader_.Get());
 
     draft_ = generator_.Settings();
+    view_.viewRadius = options.viewRadius;
     status_ = "TAB abre e fecha este painel";
 
     // Comeca acima do nivel do chao, olhando para o horizonte.
@@ -245,7 +246,14 @@ void Application::ApplySettings() {
 
 void Application::DrawSettingsPanel() {
     const ui::SettingsPanel::Result result =
-        panel_.Draw(draft_, status_.c_str());
+        panel_.Draw(draft_, view_, status_.c_str());
+
+    // Mudanca de visualizacao nao regera nada: so ajusta quantos chunks ficam
+    // carregados e onde a neblina fecha.
+    if (result.viewChanged) {
+        chunks_.SetViewRadius(view_.viewRadius);
+        status_ = "distancia ajustada";
+    }
 
     if (result.released) {
         ApplySettings();
@@ -355,6 +363,14 @@ void Application::Run() {
 
         chunks_.Update(camera_.position);
         shader_.SetViewPosition(camera_.position);
+
+        // A neblina tem de fechar um pouco ALEM do ultimo chunk carregado,
+        // senao a borda da regiao aparece como recorte reto no horizonte.
+        if (view_.fogFollowsRadius) {
+            view_.fogDistance = static_cast<float>(chunks_.ViewRadius()) *
+                                world::kChunkSize * 1.15f;
+        }
+        shader_.SetFogDistance(view_.fogDistance);
 
         BeginDrawing();
         // Mesma cor da neblina do shader: o terreno distante dissolve no ceu

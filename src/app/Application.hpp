@@ -59,6 +59,7 @@ private:
     // Copia editavel. O gerador so recebe os valores quando o usuario solta o
     // controle - ver o comentario de deteccao de soltura em SettingsPanel.
     world::TerrainSettings draft_{};
+    ui::ViewSettings view_{};
     std::string status_;
 
     bool wireframe_ = false;

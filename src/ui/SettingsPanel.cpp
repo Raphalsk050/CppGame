@@ -22,6 +22,7 @@ constexpr float kPadding = 10.0f;
 }  // namespace
 
 SettingsPanel::Result SettingsPanel::Draw(world::TerrainSettings& settings,
+                                          ViewSettings& view,
                                           const char* statusText) {
     Result result;
     if (!visible) {
@@ -47,9 +48,11 @@ SettingsPanel::Result SettingsPanel::Draw(world::TerrainSettings& settings,
             ++sectionCount;
         }
     }
+    // +4 linhas e +1 secao para o bloco de visualizacao desenhado a mao.
     const float contentH =
-        (static_cast<float>(floatCount + intCount) * (kRowHeight + kRowGap)) +
-        (static_cast<float>(sectionCount) * kSectionGap) + 60.0f;
+        (static_cast<float>(floatCount + intCount + 4) *
+         (kRowHeight + kRowGap)) +
+        (static_cast<float>(sectionCount + 1) * kSectionGap) + 60.0f;
     const Rectangle content{0.0f, 0.0f, panel.width - 20.0f, contentH};
 
     result.mouseOverPanel = CheckCollisionPointRec(GetMousePosition(), panel);
@@ -112,17 +115,59 @@ SettingsPanel::Result SettingsPanel::Draw(world::TerrainSettings& settings,
     const Rectangle listBounds{panel.x, y, panel.width,
                                panel.y + panel.height - y - kPadding};
 
-    Rectangle view{0};
-    GuiScrollPanel(listBounds, nullptr, content, &scroll_, &view);
+    // `viewArea`, nao `view`: o parametro ViewSettings ja ocupa esse nome.
+    Rectangle viewArea{0};
+    GuiScrollPanel(listBounds, nullptr, content, &scroll_, &viewArea);
 
-    BeginScissorMode(static_cast<int>(view.x), static_cast<int>(view.y),
-                     static_cast<int>(view.width),
-                     static_cast<int>(view.height));
+    BeginScissorMode(static_cast<int>(viewArea.x), static_cast<int>(viewArea.y),
+                     static_cast<int>(viewArea.width),
+                     static_cast<int>(viewArea.height));
 
     float rowY = listBounds.y + scroll_.y + kPadding;
     const float rowX = listBounds.x + kPadding;
     const float sliderW =
         content.width - kLabelWidth - kValueWidth - kPadding * 2.0f;
+
+    // ---- visualizacao: primeiro, e fora da tabela do terreno -------------
+    // Estes nao regeram nada, so mudam quanto do mundo aparece.
+    GuiLabel(Rectangle{rowX, rowY, content.width, kRowHeight},
+             "- Visualizacao -");
+    rowY += kRowHeight;
+
+    {
+        GuiLabel(Rectangle{rowX, rowY, kLabelWidth, kRowHeight},
+                 "distancia (chunks)");
+        float radius = static_cast<float>(view.viewRadius);
+        const float radiusBefore = radius;
+        GuiSliderBar(Rectangle{rowX + kLabelWidth, rowY, sliderW, kRowHeight},
+                     nullptr, nullptr, &radius, 2.0f, 24.0f);
+        if (radius != radiusBefore) {
+            view.viewRadius = static_cast<int>(radius + 0.5f);
+            result.viewChanged = true;
+        }
+        GuiLabel(Rectangle{rowX + kLabelWidth + sliderW + 4.0f, rowY,
+                           kValueWidth, kRowHeight},
+                 TextFormat("%d", view.viewRadius));
+        rowY += kRowHeight + kRowGap;
+
+        GuiCheckBox(Rectangle{rowX, rowY, 16.0f, 16.0f},
+                    " neblina acompanha a distancia", &view.fogFollowsRadius);
+        rowY += kRowHeight + kRowGap;
+
+        if (!view.fogFollowsRadius) {
+            GuiLabel(Rectangle{rowX, rowY, kLabelWidth, kRowHeight},
+                     "neblina");
+            const float fogBefore = view.fogDistance;
+            GuiSliderBar(
+                Rectangle{rowX + kLabelWidth, rowY, sliderW, kRowHeight},
+                nullptr, nullptr, &view.fogDistance, 60.0f, 3000.0f);
+            if (view.fogDistance != fogBefore) result.viewChanged = true;
+            GuiLabel(Rectangle{rowX + kLabelWidth + sliderW + 4.0f, rowY,
+                               kValueWidth, kRowHeight},
+                     TextFormat("%.0f", view.fogDistance));
+            rowY += kRowHeight + kRowGap;
+        }
+    }
 
     section = nullptr;
     for (std::size_t i = 0; i < floatCount; ++i) {

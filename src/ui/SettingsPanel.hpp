@@ -7,6 +7,15 @@
 
 namespace ui {
 
+// Ajustes de VISUALIZACAO. Ficam fora de TerrainSettings de proposito: nao
+// mudam o mundo, so o quanto dele se ve - alterar estes NAO exige regerar
+// chunk nenhum, ao contrario de qualquer campo do terreno.
+struct ViewSettings {
+    int viewRadius = 12;       // em chunks
+    float fogDistance = 600.f; // unidades de mundo ate a neblina fechar
+    bool fogFollowsRadius = true;
+};
+
 // Painel de ajuste do terreno, gerado a partir de world/TerrainSettingsSchema.
 // Nao ha lista de sliders escrita a mao: acrescentar um campo na tabela do
 // schema faz o slider aparecer aqui sozinho.
@@ -20,10 +29,14 @@ public:
         bool resetRequested = false;
         bool regenerateRequested = false;
         bool mouseOverPanel = false;
+        // Separado de `changed`: mexer na distancia de visao nao exige
+        // regerar o terreno, so carregar ou descartar chunks.
+        bool viewChanged = false;
     };
 
     // Desenha e edita `settings` no lugar.
-    Result Draw(world::TerrainSettings& settings, const char* statusText);
+    Result Draw(world::TerrainSettings& settings, ViewSettings& view,
+                const char* statusText);
 
     bool visible = false;
 
