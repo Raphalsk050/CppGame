@@ -234,7 +234,26 @@ float TerrainGenerator::BaseHeight(float x, float z) const {
         height += settings_.mountainHeight * shaped * ReliefScale(x, z) * flatten;
     }
 
-    return ApplyTerraces(height);
+    height = ApplyTerraces(height);
+
+    // --- detalhe fino -----------------------------------------------------
+    // Modulado pela inclinacao local: rocha exposta e rugosa, campo e liso.
+    // A inclinacao sai de duas amostras baratas do proprio termo de montanha,
+    // nao de BaseHeight (seria recursao).
+    if (settings_.detailHeight != 0.0f) {
+        const float d = 6.0f;
+        const float gx = CoarseHeight(x + d, z) - CoarseHeight(x - d, z);
+        const float gz = CoarseHeight(x, z + d) - CoarseHeight(x, z - d);
+        const float slope = std::sqrt(gx * gx + gz * gz) / (2.0f * d);
+
+        const float gain = 1.0f + settings_.detailSlopeGain * Clamp01(slope);
+        height += settings_.detailHeight * gain *
+                  noise_.Fbm2(x * settings_.detailScale,
+                              z * settings_.detailScale,
+                              settings_.detailOctaves);
+    }
+
+    return height;
 }
 
 // Diferenca entre a media da vizinhanca e o ponto: positivo em depressao.
@@ -264,11 +283,11 @@ float TerrainGenerator::SurfaceHeight(float x, float z) const {
     // --- comporta: onde pode haver rio -------------------------------------
     // Tres condicoes multiplicadas, todas continuas:
     //   altitude baixa, terreno concavo (calha), fora de regiao montanhosa.
+    // O limite e RELATIVO ao nivel do mar: absoluto quebraria a cada mudanca
+    // de escala do mundo.
+    const float limit = settings_.seaLevel + settings_.riverAltitudeLimit;
     const float lowland =
-        1.0f - SmoothStep(settings_.riverAltitudeLimit,
-                          settings_.riverAltitudeLimit +
-                              settings_.riverAltitudeFade,
-                          height);
+        1.0f - SmoothStep(limit, limit + settings_.riverAltitudeFade, height);
 
     const float concave =
         SmoothStep(settings_.riverConcavityBias * 0.4f,
@@ -302,6 +321,25 @@ float TerrainGenerator::DensityAt(Vector3 p, float surfaceHeight) const {
     // Termo base. Sozinho, isto E o mundo plano: negativo abaixo da altura da
     // superficie (solido), positivo acima (ar), zero exatamente nela.
     float density = p.y - surfaceHeight;
+
+    // --- saliencias e reentrancias ----------------------------------------
+    // Ruido 3D somado a densidade, nao a altura. Esta e a unica coisa que um
+    // heightfield NAO consegue fazer: como ele guarda uma altura por coluna,
+    // nunca produz beirada, gruta nem parede negativa. Aqui o campo escalar
+    // permite - e o marching cubes gera a geometria correspondente sozinho.
+    //
+    // A amplitude cai perto da superficie do mar e cresce em altitude, para o
+    // litoral nao virar um emaranhado de arcos.
+    if (settings_.overhangStrength > 0.0f) {
+        const float above = p.y - settings_.seaLevel;
+        const float amount = SmoothStep(4.0f, 60.0f, above);
+        if (amount > 0.0f) {
+            density += settings_.overhangStrength * amount *
+                       noise_.Perlin3(p.x * settings_.overhangScale,
+                                      p.y * settings_.overhangScale * 1.6f,
+                                      p.z * settings_.overhangScale);
+        }
+    }
 
     // --- cavernas ---------------------------------------------------------
     // Somar valor POSITIVO abre vazio, porque empurra a densidade para o lado
@@ -374,8 +412,10 @@ void TerrainGenerator::Climate(float x, float z, float altitude,
         settings_.seaLevelTemperature + settings_.temperatureVariation * regional;
 
     // Lapse rate. A altitude vira quilometros pela escala do mundo.
+    // Altitude acima do mar, convertida em km APLICANDO o exagero vertical
+    // declarado (ver o comentario em climateVerticalExaggeration).
     const float km = std::max(0.0f, altitude - settings_.seaLevel) *
-                     settings_.metersPerUnit / 1000.0f;
+                     settings_.climateVerticalExaggeration / 1000.0f;
     temperature -= settings_.lapseRatePerKm * km;
 
     // --- precipitacao -----------------------------------------------------
@@ -574,9 +614,14 @@ void TerrainGenerator::HeightBounds(float& minHeight, float& maxHeight) const {
     const float valleyFloor =
         settings_.groundLevel - hills - std::fabs(settings_.valleyDepth);
 
-    minHeight = std::min(riverBed, valleyFloor) - 2.0f;
+    // A folga cobre o detalhe fino e o ruido 3D de saliencia; sem ela o
+    // ChunkManager descartaria como "so ar" chunks que ainda tem geometria.
+    const float slack = settings_.detailHeight * (1.0f + settings_.detailSlopeGain) +
+                        settings_.overhangStrength + 4.0f;
+
+    minHeight = std::min(riverBed, valleyFloor) - slack;
     maxHeight = settings_.groundLevel + hills + mountains +
-                settings_.terraceStep + 2.0f;
+                settings_.terraceStep + slack;
 }
 
 }  // namespace world

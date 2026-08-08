@@ -59,8 +59,11 @@ struct TerrainSettings {
     // A terra fica ACIMA do nivel do mar por padrao. E essa folga que faz a
     // agua aparecer so onde o terreno desce ate ela - rios, lagos nas
     // depressoes - em vez de alagar a paisagem inteira.
-    float groundLevel = 11.0f;
-    float seaLevel = 0.0f;
+    // Convencao do Minecraft: nivel do mar em y=62, terreno logo acima, e
+    // montanhas chegando a ~250. Com 1 unidade = 1 m isso da um mundo em que
+    // um jogador de 1,8 m tem escala correta contra o relevo.
+    float groundLevel = 78.0f;
+    float seaLevel = 62.0f;
 
     // --- COLINAS ---------------------------------------------------------
     // Ondulacao de base, presente no mundo inteiro.
@@ -68,19 +71,48 @@ struct TerrainSettings {
     // A FREQUENCIA importa tanto quanto a amplitude: 13 unidades espalhadas por
     // 200 (escala 0.005) dao ~7% de inclinacao, que le como duna, nao como
     // colina. Encurtar o comprimento de onda e o que produz encosta de verdade.
-    float hillHeight = 17.0f;
-    float hillScale = 0.011f;
+    float hillHeight = 26.0f;
+    float hillScale = 0.009f;
     int hillOctaves = 4;
 
     // --- MONTANHAS -------------------------------------------------------
     // Ruido ridged (cristas afiadas) elevado a mountainSharpness.
-    float mountainHeight = 105.0f;
-    float mountainScale = 0.0042f;
+    float mountainHeight = 175.0f;
+    float mountainScale = 0.0032f;
     int mountainOctaves = 4;
     // Expoente da crista. 2.0 achata os flancos e so o pico sobe, o que da
     // morros arredondados; 1.3 mantem a encosta inteira ingreme, que e o
     // perfil das montanhas do Minecraft.
     float mountainSharpness = 1.3f;
+
+    // --- DETALHE FINO ----------------------------------------------------
+    // A causa real do terreno parecer massa de modelar NAO era falta de
+    // resolucao: e que a funcao de altura nao tinha conteudo de alta
+    // frequencia. Com comprimento de onda minimo de ~90 m, nada abaixo disso
+    // existia - e aumentar a resolucao do voxel nao inventa detalhe que a
+    // funcao nao tem. Esta camada e o detalhe que faltava.
+    float detailHeight = 3.2f;    // amplitude, em metros
+    float detailScale = 0.06f;    // ~17 m de comprimento de onda
+    int detailOctaves = 4;
+    // O detalhe cresce com a inclinacao: rocha exposta e rugosa, campo e liso.
+    float detailSlopeGain = 2.2f;
+
+    // Ruido 3D aplicado direto na DENSIDADE, nao na altura. E o unico termo
+    // capaz de criar saliencia e reentrancia - um heightfield, por definicao,
+    // so tem uma altura por coluna e nunca produz beirada nem gruta.
+    // CALIBRAGEM, nao chute: para a densidade deixar de ser monotona em y - que
+    // e a condicao para existir saliencia - e preciso
+    //     overhangStrength * d(ruido)/dy > 1
+    // O gradiente do Perlin vale ~1,5 x frequencia, e a frequencia vertical
+    // aqui e overhangScale * 1,6. Com escala 0,055 isso da 0,13, entao a forca
+    // tem de passar de ~7,6. Com 2,6 e escala 0,021 (a primeira tentativa) o
+    // produto dava 0,13 - sete vezes abaixo do limiar, e o terreno continuava
+    // um heightfield puro apesar do ruido 3D estar la.
+    //
+    // Subir a FREQUENCIA em vez da amplitude e o que permite passar do limiar
+    // sem deformar a silhueta da montanha.
+    float overhangStrength = 15.0f;
+    float overhangScale = 0.055f;
 
     // --- RIOS E VALES ----------------------------------------------------
     // O canal segue onde um ruido 2D cruza zero: como esse cruzamento e uma
@@ -91,8 +123,8 @@ struct TerrainSettings {
     float riverScale = 0.0016f;
     float riverWidth = 0.022f;   // largura do canal
     float valleyWidth = 0.150f;  // largura do vale ao redor
-    float riverDepth = 7.0f;     // quanto o leito desce abaixo do nivel do mar
-    float valleyDepth = 11.0f;   // quanto o vale rebaixa o entorno
+    float riverDepth = 9.0f;     // quanto o leito desce abaixo do nivel do mar
+    float valleyDepth = 16.0f;   // quanto o vale rebaixa o entorno
     // Rios perdem forca onde ha montanha, senao cortariam canyons pelos picos.
     float riverMountainResistance = 0.75f;
     // Modula a largura ao longo do curso. Sem isto o rio tem espessura
@@ -108,7 +140,9 @@ struct TerrainSettings {
     // de unidades cortando o pico ao meio. Aqui o rio desaparece acima de
     // riverAltitudeLimit, que e o que faz sentido fisicamente: rio corre em
     // terra baixa, nao no alto da serra.
-    float riverAltitudeLimit = 20.0f;
+    // RELATIVO ao nivel do mar (o codigo soma seaLevel). Absoluto quebraria
+    // toda vez que a escala do mundo mudasse.
+    float riverAltitudeLimit = 22.0f;
     // Transicao LONGA. Curta demais, o rio termina num toco abrupto encravado
     // na encosta; longa, ele afina at sumir como cabeceira de riacho.
     float riverAltitudeFade = 55.0f;
@@ -145,7 +179,7 @@ struct TerrainSettings {
     // paisagem vira platos em degraus.
     float terraceStep = 5.0f;       // altura de cada camada
     float terraceStrength = 0.0f;   // 0 = liso, 1 = degrau total
-    float terraceStart = 20.0f;     // altura onde os degraus comecam
+    float terraceStart = 100.0f;     // altura onde os degraus comecam
     float terraceFade = 14.0f;      // em quantas unidades entram por completo
 
     // --- CAVERNAS --------------------------------------------------------
@@ -155,7 +189,7 @@ struct TerrainSettings {
     float caveStrength = 1.0f;
     float caveScale = 0.035f;
     float caveThreshold = 0.10f;
-    float caveDepthBelowSurface = 6.0f;
+    float caveDepthBelowSurface = 8.0f;
 
     // --- CORES POR ALTITUDE ----------------------------------------------
     // Alturas RELATIVAS ao nivel do mar, com transicao suave entre faixas.
@@ -164,10 +198,10 @@ struct TerrainSettings {
     // a 11 unidades caia em 36% do caminho areia->grama: ou seja, quase tudo
     // ficava cor de areia, e a neblina lavava isso ate o branco. A vegetacao
     // tem de comecar logo acima da linha d'agua, como na natureza.
-    float beachHeight = 1.5f;
-    float grassHeight = 6.0f;
-    float rockHeight = 48.0f;
-    float snowHeight = 78.0f;
+    float beachHeight = 2.0f;
+    float grassHeight = 9.0f;
+    float rockHeight = 85.0f;
+    float snowHeight = 150.0f;
     // Escurece faixas horizontais dentro da rocha, na mesma cadencia dos
     // terracos. E o detalhe que faz a parede parecer estratificada.
     float strataContrast = 0.16f;
@@ -176,11 +210,19 @@ struct TerrainSettings {
     // O clima e derivado do RELEVO, nao sorteado independente dele. Tres
     // mecanismos reais, cada um com a constante fisica correspondente.
 
-    // Escala do mundo. Nada disso teria magnitude correta sem ela: com 1
-    // unidade = 1 metro, uma montanha de 100 unidades esfriaria 0,65 C, o que
-    // e invisivel. Tratando cada unidade como algumas dezenas de metros, o
-    // gradiente altitudinal passa a valer o que vale na natureza.
-    float metersPerUnit = 30.0f;
+    // EXAGERO VERTICAL DO CLIMA - decisao consciente, nao erro de escala.
+    //
+    // O mundo usa 1 unidade = 1 METRO, para o jogador (1,8 un) e as cavernas
+    // terem tamanho coerente. Mas com montanhas de ~250 m, o lapse rate real
+    // de 6,5 C/km daria 1,6 C no cume: neve nenhuma, tundra nenhuma.
+    //
+    // Na Terra a linha de neve dos Alpes fica em 2500-3000 m. Para ter cume
+    // nevado num mundo de 250 m e preciso comprimir a vertical - que e
+    // exatamente o que o Minecraft faz de forma implicita, colocando neve por
+    // volta de y=160. Aqui isso fica EXPLICITO: para efeito de clima, cada
+    // unidade de altitude conta como `climateVerticalExaggeration` metros.
+    // A geometria, a colisao e o jogador continuam em metros de verdade.
+    float climateVerticalExaggeration = 12.0f;
 
     // GRADIENTE TERMICO VERTICAL. O ar esfria ~6,5 C por 1000 m de altitude
     // (environmental lapse rate). E o motivo fisico de haver neve e tundra no

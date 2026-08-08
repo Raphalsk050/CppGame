@@ -25,7 +25,20 @@ screenshot conferido ou medição. "Compilou" não conta como pronto.
 - [x] **Clima derivado do relevo** — lapse rate 6,5 °C/km + efeito orográfico.
       *Validado: lapse exato, barlavento mais úmido em 69% de 1515 serras.*
 - [x] **Biomas de Whittaker** em unidades físicas ancoradas em regiões reais.
-      *Validado: 9 biomas distintos em 18×18 km, 0 bioma quente acima de 90.*
+      *Validado: 9 biomas distintos em 18×18 km, 0 bioma quente acima da linha
+      de neve.*
+- [x] **[0] Escala do mundo coerente** — 1 unidade = 1 metro, mar em y=62 e
+      montanhas até ~254 m (convenção do Minecraft). O clima usa um **exagero
+      vertical declarado** (`climateVerticalExaggeration = 12`), porque com
+      montanhas de 250 m o lapse rate real daria 1,6 °C no cume: neve nenhuma.
+      *Validado: relevo de 203 m = 113 alturas de jogador, 75% do terreno
+      abaixo de 45°, cume 14 °C mais frio.*
+- [x] **[1] Detalhe de superfície** — camada de alta frequência modulada por
+      inclinação + ruído 3D na densidade.
+      *Validado: rugosidade de 0,52 m em escala de 3 m, e 3,6% das colunas com
+      mais de um cruzamento (máx. 5) — prova que existe geometria que um
+      heightfield não representa.*
+- [x] **Suíte de validação numérica** (`tests/run.sh`) — roda sem janela.
 
 ---
 
@@ -77,7 +90,24 @@ elas dependem.
 
 ---
 
-# [0] ESCALA DO MUNDO — *bloqueante, fazer primeiro*
+# [0] ESCALA DO MUNDO — CONCLUÍDO
+
+Resolvido. Registro da decisão, porque não é óbvia:
+
+**1 unidade = 1 metro** para geometria, jogador e cavernas. Mar em y=62,
+terreno por volta de 78, montanhas até ~254 — a convenção do Minecraft.
+
+O conflito: com montanhas de 250 m, o lapse rate real de 6,5 °C/km dá **1,6 °C
+no cume**. Neve nenhuma. Na Terra a linha de neve dos Alpes fica a 2500–3000 m;
+um mundo de 250 m simplesmente não alcança. O Minecraft resolve isso comprimindo
+a vertical de forma implícita (neve por volta de y=160).
+
+**Decisão: comprimir a vertical, mas declarado.** `climateVerticalExaggeration`
+= 12: para efeito de clima, cada unidade de altitude conta como 12 m. Geometria,
+colisão e jogador continuam em metros de verdade. O exagero fica num único
+parâmetro nomeado, em vez de espalhado em constantes mágicas.
+
+## (histórico do problema)
 
 **Incoerência encontrada na revisão:** o clima usa `metersPerUnit = 30`, mas o
 voxel tem 1 unidade. Se 1 unidade fossem 30 m, um jogador de 1,8 m mediria
@@ -98,7 +128,22 @@ momentos diferentes e nunca casaram.
 
 # FILA DE TRABALHO
 
-## 1. Detalhe de superfície — *causa real do "parece macinha de modelar"*
+## 1. Detalhe de superfície — CONCLUÍDO
+
+Duas camadas, e a segunda precisou de **calibragem, não de chute**:
+
+- Detalhe fino na altura (fbm de alta frequência), com ganho pela inclinação
+- **Ruído 3D na densidade** — o único termo capaz de criar saliência, já que
+  heightfield tem uma altura por coluna por definição
+
+A primeira tentativa do ruído 3D não produziu saliência nenhuma, e a tela não
+denunciou. A conta explica: para a densidade deixar de ser monótona em `y` é
+preciso `força × ∂ruído/∂y > 1`. Com escala 0,021 o gradiente vertical vale
+~0,05, e força 2,6 dava 0,13 — **sete vezes abaixo do limiar**. A correção foi
+subir a *frequência* (0,055), não a amplitude: amplitude alta passaria do
+limiar mas deformaria a silhueta da montanha.
+
+## 1b. (histórico) Detalhe de superfície — *causa real do "parece macinha"*
 
 Diagnóstico: **não é falta de LOD.** O terreno é liso porque a função de altura
 não tem conteúdo de alta frequência. `hillScale = 0.011` dá comprimento de onda
