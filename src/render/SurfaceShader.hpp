@@ -1,0 +1,41 @@
+#pragma once
+
+#include "raylib.h"
+
+namespace render {
+
+// Shader de iluminacao para a isosuperficie.
+//
+// O shader default da raylib nao ilumina nada: ele multiplica textura por
+// colDiffuse e pronto. Numa malha branca sem textura isso pinta a superficie
+// de branco chapado - as normais interpoladas pelo poligonizador nao teriam
+// nenhum efeito visivel, e o relevo da superficie ficaria invisivel.
+//
+// GLSL embutido no binario em vez de arquivo .vs/.fs em disco: o executavel
+// continua sendo uma coisa so, sem diretorio de assets para achar em runtime.
+class SurfaceShader {
+public:
+    SurfaceShader();
+    ~SurfaceShader();
+
+    SurfaceShader(const SurfaceShader&) = delete;
+    SurfaceShader& operator=(const SurfaceShader&) = delete;
+
+    // Instala o shader no material do modelo. Precisa ser refeito sempre que o
+    // modelo e recriado (a DynamicMesh cria um material default novo).
+    void ApplyTo(Model& model) const;
+
+    // A especular depende da posicao da camera, entao muda a cada frame.
+    void SetViewPosition(Vector3 position) const;
+
+    bool IsValid() const;
+
+    Shader Get() const { return shader_; }
+
+private:
+    Shader shader_{};
+    int viewPositionLoc_ = -1;
+    int lightDirectionLoc_ = -1;
+};
+
+}  // namespace render
