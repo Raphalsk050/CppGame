@@ -58,8 +58,10 @@ add_executable(${PROJECT_NAME}
     src/mc/SampleGrid.cpp
     src/mc/Tables.cpp
     src/render/DynamicMesh.cpp
+    src/render/Frustum.cpp
     src/render/SurfaceShader.cpp
     src/world/Chunk.cpp
+    src/world/ChunkBuilder.cpp
     src/world/ChunkManager.cpp
     src/world/Noise.cpp
     src/world/TerrainEdits.cpp

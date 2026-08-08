@@ -24,16 +24,16 @@ ChunkCoord ChunkManager::CoordFromWorld(Vector3 position) {
     };
 }
 
-ChunkManager::ChunkManager(const TerrainGenerator& generator, int viewRadius)
+ChunkManager::ChunkManager(const TerrainGenerator& generator, int viewRadius,
+                           int threadCount)
     : generator_(&generator),
       viewRadius_(std::max(1, viewRadius)),
-      scratchGrid_(Vector3{0.0f, 0.0f, 0.0f}, Vector3{1.0f, 1.0f, 1.0f},
-                   kChunkGridResolution) {
-    scratchMesh_.Reserve(1u << 16);
+      builder_(generator, threadCount) {
+    stats_.threads = builder_.ThreadCount();
 }
 
 void ChunkManager::SetViewRadius(int radius) {
-    radius = std::clamp(radius, 1, 16);
+    radius = std::clamp(radius, 1, 24);
     if (radius == viewRadius_) return;
     viewRadius_ = radius;
     queueDirty_ = true;
@@ -47,6 +47,10 @@ void ChunkManager::SetShader(Shader shader) {
 void ChunkManager::Invalidate() {
     chunks_.clear();
     queue_.clear();
+    inFlight_.clear();
+    // Descarta tambem o que ja esta pronto no pool: seria geometria do terreno
+    // anterior chegando depois da troca.
+    builder_.CancelPending();
     queueDirty_ = true;
 }
 
@@ -81,9 +85,9 @@ void ChunkManager::RefreshQueue(ChunkCoord center) {
 
             for (int y = minY; y <= maxY; ++y) {
                 const ChunkCoord coord{center.x + dx, y, center.z + dz};
-                if (chunks_.find(coord) == chunks_.end()) {
-                    queue_.push_back(coord);
-                }
+                if (chunks_.find(coord) != chunks_.end()) continue;
+                if (inFlight_.find(coord) != inFlight_.end()) continue;
+                queue_.push_back(coord);
             }
         }
     }
@@ -120,11 +124,45 @@ void ChunkManager::UnloadFarChunks(ChunkCoord center) {
     }
 }
 
+void ChunkManager::SubmitPending() {
+    while (!queue_.empty() &&
+           static_cast<int>(inFlight_.size()) < maxInFlight_) {
+        const ChunkCoord coord = queue_.back();
+        queue_.pop_back();
+
+        if (chunks_.find(coord) != chunks_.end()) continue;
+        if (!inFlight_.insert(coord).second) continue;
+
+        // As edicoes sao copiadas aqui, na thread principal. O worker nunca le
+        // o acervo, entao escavar durante a geracao nao corre com ninguem.
+        const std::vector<SphereEdit>* edits = edits_.ForChunk(coord);
+        builder_.Submit(coord, edits ? *edits : std::vector<SphereEdit>{});
+    }
+}
+
+void ChunkManager::CollectFinished() {
+    harvest_.clear();
+    builder_.Collect(harvest_, uploadsPerFrame_);
+
+    stats_.uploadedThisFrame = static_cast<int>(harvest_.size());
+
+    for (ChunkBuild& build : harvest_) {
+        inFlight_.erase(build.coord);
+
+        // Pode ter sido descarregado enquanto era gerado (camera andou).
+        auto chunk = std::make_unique<Chunk>(build.coord);
+        if (build.triangles > 0) {
+            // Unico ponto de contato com a GPU em todo o caminho de geracao.
+            chunk->Upload(build.mesh, build.triangles);
+            chunk->SetShader(shader_);
+        }
+        chunks_[build.coord] = std::move(chunk);
+    }
+}
+
 void ChunkManager::Update(Vector3 cameraPosition) {
     const ChunkCoord center = CoordFromWorld(cameraPosition);
 
-    // A fila so e recalculada quando a camera muda de chunk. Refazer isso todo
-    // frame seria varredura de (2r+1)^2 * camadas a toa.
     if (queueDirty_ || center.x != lastCenter_.x || center.z != lastCenter_.z) {
         lastCenter_ = center;
         queueDirty_ = false;
@@ -132,25 +170,12 @@ void ChunkManager::Update(Vector3 cameraPosition) {
         RefreshQueue(center);
     }
 
-    stats_.generatedThisFrame = 0;
-
-    for (int i = 0; i < budgetPerFrame_ && !queue_.empty(); ++i) {
-        const ChunkCoord coord = queue_.back();
-        queue_.pop_back();
-
-        // Pode ter sido gerado por outro caminho enquanto estava na fila.
-        if (chunks_.find(coord) != chunks_.end()) continue;
-
-        auto chunk = std::make_unique<Chunk>(coord);
-        chunk->Generate(*generator_, scratchGrid_, scratchMesh_,
-                        edits_.ForChunk(coord));
-        chunk->SetShader(shader_);
-        chunks_.emplace(coord, std::move(chunk));
-        ++stats_.generatedThisFrame;
-    }
+    SubmitPending();
+    CollectFinished();
 
     stats_.loaded = static_cast<int>(chunks_.size());
     stats_.pending = static_cast<int>(queue_.size());
+    stats_.inFlight = static_cast<int>(inFlight_.size());
     stats_.withGeometry = 0;
     stats_.triangles = 0;
     for (const auto& [coord, chunk] : chunks_) {
@@ -189,17 +214,15 @@ bool ChunkManager::Raycast(Vector3 origin, Vector3 direction,
     };
 
     float previousT = 0.0f;
-    float previousDensity = densityAt(origin);
 
     // Camera dentro do solido: nada a acertar a frente.
-    if (previousDensity < 0.0f) return false;
+    if (densityAt(origin) < 0.0f) return false;
 
     for (float t = kStep; t <= maxDistance; t += kStep) {
         const Vector3 p{origin.x + dir.x * t, origin.y + dir.y * t,
                         origin.z + dir.z * t};
-        const float density = densityAt(p);
 
-        if (density < 0.0f) {
+        if (densityAt(p) < 0.0f) {
             // Bisseccao entre o ultimo ponto no ar e o primeiro no solido.
             float lo = previousT;
             float hi = t;
@@ -219,7 +242,6 @@ bool ChunkManager::Raycast(Vector3 origin, Vector3 direction,
         }
 
         previousT = t;
-        previousDensity = density;
     }
 
     return false;
@@ -228,15 +250,15 @@ bool ChunkManager::Raycast(Vector3 origin, Vector3 direction,
 void ChunkManager::ApplyEdit(const SphereEdit& edit) {
     const std::vector<ChunkCoord> affected = edits_.Add(edit);
 
-    // Remalha na hora. Sao poucos chunks (a esfera de escavacao e pequena
-    // perto de um chunk), entao nao vale passar pela fila de streaming - o
-    // jogador precisa ver o buraco no mesmo frame do clique.
+    // Reenvia os chunks atingidos ao pool. Sao poucos - a esfera de escavacao e
+    // pequena perto de um chunk - e o resultado chega no frame seguinte ou no
+    // outro, o que na pratica e imperceptivel.
     for (const ChunkCoord& coord : affected) {
-        const auto it = chunks_.find(coord);
-        if (it == chunks_.end()) continue;
-        it->second->Generate(*generator_, scratchGrid_, scratchMesh_,
-                             edits_.ForChunk(coord));
-        it->second->SetShader(shader_);
+        if (chunks_.find(coord) == chunks_.end()) continue;
+        if (!inFlight_.insert(coord).second) continue;
+
+        const std::vector<SphereEdit>* list = edits_.ForChunk(coord);
+        builder_.Submit(coord, list ? *list : std::vector<SphereEdit>{});
     }
 }
 
@@ -245,10 +267,24 @@ void ChunkManager::ClearEdits() {
     Invalidate();
 }
 
-void ChunkManager::Draw(Color tint, bool wireframe) {
+void ChunkManager::Draw(const Camera3D& camera, Color tint, bool wireframe) {
+    // O aspecto vem do framebuffer, nao da janela logica: com HIGHDPI os dois
+    // diferem, e usar o errado desalinharia os planos laterais do que aparece.
+    const float aspect = static_cast<float>(GetRenderWidth()) /
+                         static_cast<float>(GetRenderHeight());
+    frustum_.Update(camera, aspect);
+
     stats_.drawn = 0;
+    stats_.culled = 0;
+
     for (const auto& [coord, chunk] : chunks_) {
         if (!chunk->HasGeometry()) continue;
+
+        if (!frustum_.Intersects(chunk->Bounds())) {
+            ++stats_.culled;
+            continue;
+        }
+
         if (wireframe) {
             chunk->DrawWires(tint);
         } else {

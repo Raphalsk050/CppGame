@@ -2,17 +2,19 @@
 
 #include <cstddef>
 #include <optional>
-#include <vector>
 
 #include "mc/MeshData.hpp"
-#include "mc/SampleGrid.hpp"
 #include "raylib.h"
 #include "render/DynamicMesh.hpp"
-#include "world/TerrainGenerator.hpp"
 
 namespace world {
 
-// Lado do chunk em celulas e em unidades de mundo (voxel de 1 unidade).
+// Lado do chunk em celulas e em unidades de mundo.
+//
+// kVoxelSize e o controle de RESOLUCAO: subir para 2.0 quadruplica a area da
+// celula e corta os triangulos na mesma proporcao. kChunkCells e o controle de
+// GRANULARIDADE do streaming: baixa-lo faz chunks menores com o MESMO detalhe,
+// o que so aumenta o numero de VAOs e draw calls.
 inline constexpr int kChunkCells = 32;
 inline constexpr float kVoxelSize = 1.0f;
 inline constexpr float kChunkSize = kChunkCells * kVoxelSize;
@@ -23,11 +25,6 @@ inline constexpr float kChunkSize = kChunkCells * kVoxelSize;
 // diferentes para o mesmo vertice - emenda visivel em cada borda.
 inline constexpr int kChunkPadding = 1;
 inline constexpr int kChunkGridResolution = kChunkCells + 2 * kChunkPadding;
-
-// Definido em world/TerrainEdits.hpp. Declarado aqui em vez de incluido
-// porque aquele cabecalho precisa de ChunkCoord: incluir nos dois sentidos
-// seria ciclo. Como so aparece atras de ponteiro, a declaracao basta.
-struct SphereEdit;
 
 struct ChunkCoord {
     int x = 0;
@@ -48,25 +45,21 @@ struct ChunkCoordHash {
     }
 };
 
+// Um chunk e apenas o RECURSO DE GPU do pedaco de mundo.
+//
+// Toda a geracao - amostrar o campo, marching cubes, cor por vertice - mora no
+// ChunkBuilder e roda em worker. A separacao existe porque o contexto OpenGL
+// pertence a uma unica thread: o que sobrou aqui e exatamente o que so a
+// thread principal pode fazer.
 class Chunk {
 public:
     explicit Chunk(ChunkCoord coord);
 
-    // Gera densidade e malha. `grid` e `scratch` sao buffers de rascunho
-    // compartilhados por TODOS os chunks: a densidade nao precisa sobreviver a
-    // malha, entao guardar uma grade por chunk desperdicaria centenas de MB.
-    //
-    // `edits` sao as escavacoes do jogador que alcancam este chunk (nullptr se
-    // nenhuma). Como a densidade e sempre recomputada do zero, regerar um
-    // chunk editado e o mesmo caminho de codigo de gerar um virgem.
-    void Generate(const TerrainGenerator& generator, mc::SampleGrid& grid,
-                  mc::MeshData& scratch,
-                  const std::vector<SphereEdit>* edits = nullptr);
+    // Sobe geometria ja pronta para a GPU. THREAD PRINCIPAL apenas.
+    void Upload(const mc::MeshData& mesh, int triangles);
 
     void Draw(Color tint) const;
     void DrawWires(Color tint) const;
-
-    // Sem efeito se o chunk nao gerou geometria.
     void SetShader(Shader shader);
 
     ChunkCoord Coord() const { return coord_; }

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
 
 #include "raymath.h"
 #include "world/TerrainSettingsSchema.hpp"
@@ -80,7 +81,11 @@ Application::Application(const Options& options)
       window_(kWindowWidth, kWindowHeight, "Mundo procedural - marching cubes",
               FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI),
       generator_(MakeSettings(options.seed, options.settingsPath)),
-      chunks_(generator_, options.viewRadius) {
+            // Deixa dois nucleos livres: a thread principal ainda desenha e o
+      // driver de GL usa outra. Encher todos so aumenta a disputa.
+      chunks_(generator_, options.viewRadius,
+              std::max(1, static_cast<int>(
+                              std::thread::hardware_concurrency()) - 2)) {
     window_.SetTargetFPS(60);
 
     chunks_.SetShader(shader_.Get());
@@ -311,8 +316,11 @@ void Application::DrawHud() const {
     line(TextFormat("chunks: %d  (%d com malha)  raio %d", stats.loaded,
                     stats.withGeometry, chunks_.ViewRadius()),
          RAYWHITE);
-    line(TextFormat("na fila: %d   gerados no frame: %d", stats.pending,
-                    stats.generatedThisFrame),
+    line(TextFormat("desenhados: %d   descartados: %d", stats.drawn,
+                    stats.culled),
+         SKYBLUE);
+    line(TextFormat("fila: %d   em voo: %d   threads: %d", stats.pending,
+                    stats.inFlight, stats.threads),
          stats.pending > 0 ? ORANGE : GRAY);
     line(TextFormat("triangulos: %d", stats.triangles), SKYBLUE);
     line(TextFormat("colina: %.0f   montanha: %.0f   caverna: %.2f",
@@ -354,7 +362,7 @@ void Application::Run() {
         ClearBackground(Color{158, 189, 230, 255});
 
         BeginMode3D(camera_);
-        chunks_.Draw(WHITE, wireframe_);
+        chunks_.Draw(camera_, WHITE, wireframe_);
 
         // Esfera-fantasma do alvo, para o jogador ver onde a escavacao vai
         // cair antes de clicar.
