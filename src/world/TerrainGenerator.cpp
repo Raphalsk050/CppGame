@@ -349,16 +349,72 @@ float TerrainGenerator::DensityAt(Vector3 p, float surfaceHeight) const {
     if (settings_.caveStrength > 0.0f) {
         const float depth = surfaceHeight - p.y;  // >0 abaixo da superficie
         if (depth > settings_.caveDepthBelowSurface) {
+            // Esvanece perto do teto para a caverna nao cortar o terreno num
+            // degrau reto na superficie.
+            const float fade =
+                Clamp01((depth - settings_.caveDepthBelowSurface) / 8.0f);
+
+            // --- perfil por zona hidrogeologica ---------------------------
+            // Acima do lencol o eixo vertical e COMPRIMIDO na amostragem, o
+            // que alonga a feicao na vertical e produz poco e canyon estreito
+            // (zona vadosa, entrincheiramento por gravidade). Abaixo, a
+            // amostragem e isotropica e o conduto sai arredondado (zona
+            // freatica, dissolucao em todas as direcoes).
+            const float vadose =
+                SmoothStep(settings_.waterTableLevel - 15.0f,
+                           settings_.waterTableLevel + 15.0f, p.y);
+            const float yScale =
+                1.0f / (1.0f + vadose * (settings_.vadoseVerticalStretch - 1.0f));
+
+            // `carve` em [0,1]: 0 = rocha intacta, 1 = vazio total.
+            //
+            // ESCAVAR POR MISTURA, NAO POR SOMA. A versao anterior somava o
+            // termo de caverna a densidade, e nao funcionava: a densidade base
+            // vale (y - altura da superficie), que a 70 m de profundidade e
+            // -71, enquanto o termo somado chegava no maximo a +0,10. As
+            // cavernas so existiam encostadas na superficie, onde |densidade|
+            // ainda era pequena. Nenhuma constante resolve isso, porque a
+            // densidade cresce com a profundidade - e preciso puxar o valor
+            // para o lado do ar, e nao adicionar a ele.
+            float carve = 0.0f;
+
+            // --- tuneis: a BORDA do ruido ---------------------------------
+            // |n| perto de zero e uma superficie fina no volume, e por isso o
+            // conjunto vira uma rede conectada de galerias, nao bolhas soltas.
             const float n = noise_.Perlin3(p.x * settings_.caveScale,
-                                           p.y * settings_.caveScale,
+                                           p.y * settings_.caveScale * yScale,
                                            p.z * settings_.caveScale);
             const float tunnel = settings_.caveThreshold - std::fabs(n);
             if (tunnel > 0.0f) {
-                // Esvanece perto do teto para a caverna nao cortar o terreno
-                // num degrau reto.
-                const float fade =
-                    Clamp01((depth - settings_.caveDepthBelowSurface) / 5.0f);
-                density += settings_.caveStrength * tunnel * fade;
+                carve = std::max(carve,
+                                 SmoothStep(0.0f, settings_.caveThreshold,
+                                            tunnel) * fade);
+            }
+
+            // --- camaras: a REGIAO do ruido -------------------------------
+            // Termo separado de proposito: a regiao acima de um limiar produz
+            // VOLUME, enquanto a borda produz tubo. So com o tunel o subsolo
+            // vira um espaguete uniforme, sem nenhum salao.
+            if (settings_.chamberStrength > 0.0f &&
+                depth > settings_.chamberMinDepth) {
+                const float c = noise_.Fbm3(p.x * settings_.chamberScale,
+                                            p.y * settings_.chamberScale * 1.4f,
+                                            p.z * settings_.chamberScale, 2);
+                const float room = c - settings_.chamberThreshold;
+                if (room > 0.0f) {
+                    const float deep =
+                        Clamp01((depth - settings_.chamberMinDepth) / 25.0f);
+                    carve = std::max(carve,
+                                     SmoothStep(0.0f, 0.18f, room) * deep *
+                                         Clamp01(settings_.chamberStrength));
+                }
+            }
+
+            carve = Clamp01(carve * settings_.caveStrength);
+            if (carve > 0.0f) {
+                // Puxa a densidade para o ar. Com carve = 1 o ponto e vazio
+                // independentemente da profundidade.
+                density += (1.0f - density) * carve;
             }
         }
     }

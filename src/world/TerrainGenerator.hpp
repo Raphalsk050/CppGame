@@ -191,6 +191,33 @@ struct TerrainSettings {
     float caveThreshold = 0.10f;
     float caveDepthBelowSurface = 8.0f;
 
+    // LENCOL FREATICO. E o que separa os dois regimes da espeleogenese real:
+    //
+    // - ABAIXO (zona freatica), a rocha esta saturada e a dissolucao acontece
+    //   em todas as direcoes por igual -> conduto TUBULAR, secao arredondada.
+    // - ACIMA (zona vadosa), a agua percola por gravidade e entrincheira o
+    //   piso -> POCO VERTICAL e canyon alto e estreito.
+    //
+    // O codigo obtem os dois com o MESMO ruido, mudando so a proporcao dos
+    // eixos na amostragem: comprimir o eixo Y alonga a feicao na vertical.
+    float waterTableLevel = 40.0f;
+    float vadoseVerticalStretch = 3.2f;  // quanto alongar na vertical acima
+
+    // CAMARAS ("cheese caves", na terminologia do Minecraft 1.18). O tunel sai
+    // da BORDA do ruido; a camara sai da REGIAO acima de um limiar. Sao coisas
+    // diferentes e por isso precisam de termos separados - so com o tunel o
+    // subsolo vira um espaguete uniforme, sem nenhum salao.
+    float chamberStrength = 1.0f;
+    float chamberScale = 0.013f;
+    // Calibrado, nao chutado: o fbm normalizado se concentra perto de zero,
+    // entao um limiar de 0,42 quase nunca era atingido e as camaras nao
+    // apareciam (0,3% dos vazios). 0,12 poe o salao numa fracao util do
+    // volume sem transformar o subsolo em queijo.
+    float chamberThreshold = 0.12f;
+    // Camaras grandes so nas profundidades; perto da superficie elas abririam
+    // crateras.
+    float chamberMinDepth = 45.0f;
+
     // --- CORES POR ALTITUDE ----------------------------------------------
     // Alturas RELATIVAS ao nivel do mar, com transicao suave entre faixas.
     //

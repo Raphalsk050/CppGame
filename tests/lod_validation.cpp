@@ -112,7 +112,7 @@ int main() {
                 if (melhor < 1e8f) { piorFenda = std::max(piorFenda, melhor); ++amostras; }
             }
         }
-        const float saia = LodVoxelSize(2) * 2.5f;
+        const float saia = LodVoxelSize(2) * 8.0f;
         const bool ok = (amostras == 0) || (piorFenda < saia);
         std::printf("fenda entre LOD0 e LOD2: pior %.2f m em %d pontos; saia cobre %.2f m  %s\n",
                     piorFenda, amostras, saia, ok?"ok":"FALHOU (saia curta demais)");

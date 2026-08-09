@@ -57,6 +57,13 @@ screenshot conferido ou medição. "Compilou" não conta como pronto.
       fundo. Os coeficientes seguem a ordem relativa dos Kd de Jerlov (água
       tipo I–II), com o vermelho atenuando ~8× mais rápido que o azul. Fundo,
       névoa e tinta de tela mudam junto.
+- [x] **[4] Cavernas com espeleogênese real** — perfil muda com o lençol
+      freático: poço vertical acima (zona vadosa, entrincheiramento por
+      gravidade), conduto tubular abaixo (zona freática, dissolução isotrópica).
+      Túnel sai da **borda** do ruído, câmara sai da **região** — são termos
+      separados porque só o túnel dá espaguete sem salão.
+      *Validado: 7,9% de vazio no subsolo, razão vertical/horizontal de 1,13 na
+      zona vadosa contra 1,01 na freática, 46% dos vazios profundos são salões.*
 
 ---
 

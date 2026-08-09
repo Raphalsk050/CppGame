@@ -141,11 +141,16 @@ void BuildGeometry(const TerrainGenerator& generator, ChunkCoord coord, int lod,
             generator.SurfaceColor(scratch.positions[i], scratch.normals[i]);
     }
 
-    // A saia so e necessaria onde pode haver vizinho de outro nivel. Em LOD 0 o
-    // vizinho mais grosso pode estar do lado, entao vale para todos os niveis.
-    // A profundidade acompanha o tamanho da celula: o descasamento entre dois
-    // niveis e da ordem da celula maior.
-    AppendSkirts(scratch, min, kChunkSize, voxel * 2.5f);
+    // A saia vale para todos os niveis: mesmo em LOD 0 o vizinho ao lado pode
+    // ser mais grosso.
+    //
+    // O fator 8 (e nao 2,5, como na primeira versao) foi MEDIDO. Com terreno
+    // liso o descasamento entre LOD0 e LOD2 valia 4,8 m e 2,5 celulas
+    // bastavam; depois das cavernas ele saltou para 27 m, porque o nivel
+    // grosseiro simplesmente nao resolve a galeria que o nivel fino abre - e a
+    // superficie de um chunk passa a diferir da do vizinho por toda a altura
+    // da caverna. O teste de fenda pegou isso na hora.
+    AppendSkirts(scratch, min, kChunkSize, voxel * 8.0f);
 
     // Move em vez de copiar: sao centenas de KB por chunk atravessando a
     // fronteira de thread.
