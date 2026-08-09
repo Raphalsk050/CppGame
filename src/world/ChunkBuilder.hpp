@@ -17,6 +17,7 @@ namespace world {
 // Geometria pronta para upload: so dados de CPU, nada de GPU.
 struct ChunkBuild {
     ChunkCoord coord;
+    int lod = 0;
     mc::MeshData mesh;
     int triangles = 0;
 };
@@ -52,7 +53,7 @@ public:
     ChunkBuilder& operator=(const ChunkBuilder&) = delete;
 
     // Enfileira a geracao. `edits` e copiado de proposito - ver acima.
-    void Submit(ChunkCoord coord, std::vector<SphereEdit> edits);
+    void Submit(ChunkCoord coord, int lod, std::vector<SphereEdit> edits);
 
     // Retira ate `max` resultados prontos. Devolve quantos saiu.
     int Collect(std::vector<ChunkBuild>& out, int max);
@@ -68,6 +69,7 @@ public:
 private:
     struct Job {
         ChunkCoord coord;
+        int lod = 0;
         std::vector<SphereEdit> edits;
         std::uint64_t generation = 0;
     };

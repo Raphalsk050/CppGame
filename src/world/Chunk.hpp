@@ -26,6 +26,24 @@ inline constexpr float kChunkSize = kChunkCells * kVoxelSize;
 inline constexpr int kChunkPadding = 1;
 inline constexpr int kChunkGridResolution = kChunkCells + 2 * kChunkPadding;
 
+// --- LOD ------------------------------------------------------------------
+// O chunk cobre SEMPRE kChunkSize unidades de mundo; o que muda por nivel e a
+// resolucao com que ele e amostrado. Nivel n usa metade das celulas do nivel
+// n-1, entao o custo cai por 4 em area de superficie.
+inline constexpr int kMaxLod = 3;
+inline constexpr int kMinCellsPerChunk = 4;
+
+inline int LodCells(int lod) {
+    const int cells = kChunkCells >> lod;
+    return (cells < kMinCellsPerChunk) ? kMinCellsPerChunk : cells;
+}
+inline int LodGridResolution(int lod) {
+    return LodCells(lod) + 2 * kChunkPadding;
+}
+inline float LodVoxelSize(int lod) {
+    return kChunkSize / static_cast<float>(LodCells(lod));
+}
+
 struct ChunkCoord {
     int x = 0;
     int y = 0;
@@ -53,7 +71,9 @@ struct ChunkCoordHash {
 // thread principal pode fazer.
 class Chunk {
 public:
-    explicit Chunk(ChunkCoord coord);
+    Chunk(ChunkCoord coord, int lod);
+
+    int Lod() const { return lod_; }
 
     // Sobe geometria ja pronta para a GPU. THREAD PRINCIPAL apenas.
     void Upload(const mc::MeshData& mesh, int triangles);
@@ -72,6 +92,7 @@ public:
 
 private:
     ChunkCoord coord_;
+    int lod_ = 0;
     std::optional<render::DynamicMesh> mesh_;
     int triangleCount_ = 0;
 };

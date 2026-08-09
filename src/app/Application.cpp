@@ -333,6 +333,9 @@ void Application::DrawHud() const {
     line(TextFormat("fila: %d   em voo: %d   threads: %d", stats.pending,
                     stats.inFlight, stats.threads),
          stats.pending > 0 ? ORANGE : GRAY);
+    line(TextFormat("LOD  0:%d  1:%d  2:%d  3:%d", stats.lodCounts[0],
+                    stats.lodCounts[1], stats.lodCounts[2], stats.lodCounts[3]),
+         GRAY);
     line(TextFormat("triangulos: %d", stats.triangles), SKYBLUE);
     line(TextFormat("colina: %.0f   montanha: %.0f   caverna: %.2f",
                     settings.hillHeight, settings.mountainHeight,

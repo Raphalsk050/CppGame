@@ -21,6 +21,7 @@ struct ChunkStats {
     int uploadedThisFrame = 0;
     int triangles = 0;
     int drawn = 0;        // sobreviveram ao frustum culling
+    int lodCounts[4] = {0, 0, 0, 0};
     int culled = 0;
     int threads = 0;
 };
@@ -67,6 +68,9 @@ private:
     void RefreshQueue(ChunkCoord center);
     void UnloadFarChunks(ChunkCoord center);
     void VerticalRange(int& minY, int& maxY) const;
+    // Nivel de detalhe pelo afastamento em chunks. Fica aqui, e nao no
+    // builder, porque depende da posicao da camera.
+    int LodForCoord(ChunkCoord coord, ChunkCoord center) const;
     void SubmitPending();
     void CollectFinished();
 
@@ -86,6 +90,11 @@ private:
     // Chunks ja enviados ao pool. Impede reenviar o mesmo enquanto ele esta
     // sendo gerado - sem isto a fila encheria de duplicatas a cada refresh.
     std::unordered_set<ChunkCoord, ChunkCoordHash> inFlight_;
+
+    // Distancia, em chunks, a partir da qual cada nivel entra. Perto o
+    // terreno precisa do detalhe; longe ele ocupa poucos pixels e a resolucao
+    // cheia seria desperdicio puro.
+    int lodDistance_[4] = {0, 3, 7, 13};
 
     std::vector<ChunkCoord> queue_;  // pendentes, mais proximo no fim
     ChunkCoord lastCenter_{};

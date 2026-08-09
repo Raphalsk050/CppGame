@@ -12,7 +12,8 @@ if [ ! -f "$RAYLIB_LIB" ]; then
 fi
 
 FRAMEWORKS="-framework CoreVideo -framework IOKit -framework Cocoa -framework GLUT -framework OpenGL"
-FONTES="src/world/TerrainGenerator.cpp src/world/Noise.cpp"
+FONTES="src/world/TerrainGenerator.cpp src/world/Noise.cpp \
+        src/mc/Polygonizer.cpp src/mc/SampleGrid.cpp src/mc/Tables.cpp"
 falhas=0
 
 for teste in tests/*_validation.cpp; do

@@ -39,6 +39,12 @@ screenshot conferido ou medição. "Compilou" não conta como pronto.
       mais de um cruzamento (máx. 5) — prova que existe geometria que um
       heightfield não representa.*
 - [x] **Suíte de validação numérica** (`tests/run.sh`) — roda sem janela.
+- [x] **[2] LOD por distância com saias** — 4 níveis (voxel 1, 2, 4, 8 m),
+      trocados conforme a câmera se aproxima. A rachadura entre níveis é
+      **medida**, não procurada a olho: a pior fenda entre LOD0 e LOD2 vale
+      4,84 m e a saia cobre 10 m.
+      *Validado: 2952 → 46 triângulos do LOD0 ao LOD3 (corte de 98%, razão de
+      4× por nível como esperado).*
 
 ---
 
@@ -160,7 +166,7 @@ inventa detalhe que a função não tem.
       - ou dual contouring com QEF (preserva aresta, mas troca o mesher inteiro)
 - [ ] Validar: medir variação de normal entre vértices vizinhos antes/depois
 
-## 2. LOD por distância
+## 2. LOD por distância — CONCLUÍDO (saias; Transvoxel fica de reserva)
 
 **Pesquisa feita.** O problema difícil é a **rachadura entre níveis**: chunks
 vizinhos com resolução diferente não compartilham vértices na fronteira.

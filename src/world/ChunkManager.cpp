@@ -85,8 +85,15 @@ void ChunkManager::RefreshQueue(ChunkCoord center) {
 
             for (int y = minY; y <= maxY; ++y) {
                 const ChunkCoord coord{center.x + dx, y, center.z + dz};
-                if (chunks_.find(coord) != chunks_.end()) continue;
                 if (inFlight_.find(coord) != inFlight_.end()) continue;
+
+                // Entra na fila se falta OU se esta no nivel errado - e assim
+                // que aproximar da camera aumenta o detalhe.
+                const auto it = chunks_.find(coord);
+                if (it != chunks_.end() &&
+                    it->second->Lod() == LodForCoord(coord, center)) {
+                    continue;
+                }
                 queue_.push_back(coord);
             }
         }
@@ -124,19 +131,39 @@ void ChunkManager::UnloadFarChunks(ChunkCoord center) {
     }
 }
 
+int ChunkManager::LodForCoord(ChunkCoord coord, ChunkCoord center) const {
+    const int dx = coord.x - center.x;
+    const int dz = coord.z - center.z;
+    const int d2 = dx * dx + dz * dz;
+
+    int lod = 0;
+    for (int i = kMaxLod; i >= 1; --i) {
+        if (d2 >= lodDistance_[i] * lodDistance_[i]) {
+            lod = i;
+            break;
+        }
+    }
+    return lod;
+}
+
 void ChunkManager::SubmitPending() {
     while (!queue_.empty() &&
            static_cast<int>(inFlight_.size()) < maxInFlight_) {
         const ChunkCoord coord = queue_.back();
         queue_.pop_back();
 
-        if (chunks_.find(coord) != chunks_.end()) continue;
+        const int lod = LodForCoord(coord, lastCenter_);
+
+        // Ja carregado NO NIVEL CERTO? nada a fazer. Se o nivel mudou (a camera
+        // se aproximou), reenvia para regerar com mais detalhe.
+        const auto existing = chunks_.find(coord);
+        if (existing != chunks_.end() && existing->second->Lod() == lod) continue;
         if (!inFlight_.insert(coord).second) continue;
 
         // As edicoes sao copiadas aqui, na thread principal. O worker nunca le
         // o acervo, entao escavar durante a geracao nao corre com ninguem.
         const std::vector<SphereEdit>* edits = edits_.ForChunk(coord);
-        builder_.Submit(coord, edits ? *edits : std::vector<SphereEdit>{});
+        builder_.Submit(coord, lod, edits ? *edits : std::vector<SphereEdit>{});
     }
 }
 
@@ -150,7 +177,7 @@ void ChunkManager::CollectFinished() {
         inFlight_.erase(build.coord);
 
         // Pode ter sido descarregado enquanto era gerado (camera andou).
-        auto chunk = std::make_unique<Chunk>(build.coord);
+        auto chunk = std::make_unique<Chunk>(build.coord, build.lod);
         if (build.triangles > 0) {
             // Unico ponto de contato com a GPU em todo o caminho de geracao.
             chunk->Upload(build.mesh, build.triangles);
@@ -163,6 +190,8 @@ void ChunkManager::CollectFinished() {
 void ChunkManager::Update(Vector3 cameraPosition) {
     const ChunkCoord center = CoordFromWorld(cameraPosition);
 
+    // Mudar de chunk altera a distancia de TODOS os chunks, e portanto o nivel
+    // de varios deles - por isso a fila e refeita, nao so complementada.
     if (queueDirty_ || center.x != lastCenter_.x || center.z != lastCenter_.z) {
         lastCenter_ = center;
         queueDirty_ = false;
@@ -178,11 +207,13 @@ void ChunkManager::Update(Vector3 cameraPosition) {
     stats_.inFlight = static_cast<int>(inFlight_.size());
     stats_.withGeometry = 0;
     stats_.triangles = 0;
+    for (int& n : stats_.lodCounts) n = 0;
     for (const auto& [coord, chunk] : chunks_) {
-        if (chunk->HasGeometry()) {
-            ++stats_.withGeometry;
-            stats_.triangles += chunk->TriangleCount();
-        }
+        if (!chunk->HasGeometry()) continue;
+        ++stats_.withGeometry;
+        stats_.triangles += chunk->TriangleCount();
+        const int lod = std::clamp(chunk->Lod(), 0, kMaxLod);
+        ++stats_.lodCounts[lod];
     }
 }
 
@@ -254,11 +285,15 @@ void ChunkManager::ApplyEdit(const SphereEdit& edit) {
     // pequena perto de um chunk - e o resultado chega no frame seguinte ou no
     // outro, o que na pratica e imperceptivel.
     for (const ChunkCoord& coord : affected) {
-        if (chunks_.find(coord) == chunks_.end()) continue;
+        const auto it = chunks_.find(coord);
+        if (it == chunks_.end()) continue;
         if (!inFlight_.insert(coord).second) continue;
 
+        // Regera no MESMO nivel em que o chunk esta: escavar nao e motivo para
+        // mudar o detalhe, e trocar o nivel aqui faria a malha "pular".
         const std::vector<SphereEdit>* list = edits_.ForChunk(coord);
-        builder_.Submit(coord, list ? *list : std::vector<SphereEdit>{});
+        builder_.Submit(coord, it->second->Lod(),
+                        list ? *list : std::vector<SphereEdit>{});
     }
 }
 

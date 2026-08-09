@@ -2,7 +2,7 @@
 
 namespace world {
 
-Chunk::Chunk(ChunkCoord coord) : coord_(coord) {}
+Chunk::Chunk(ChunkCoord coord, int lod) : coord_(coord), lod_(lod) {}
 
 Vector3 Chunk::WorldMin() const {
     return {
