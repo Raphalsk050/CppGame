@@ -52,6 +52,11 @@ screenshot conferido ou medição. "Compilou" não conta como pronto.
       *Validado: 0 de 60 corridas em velocidade alta atravessaram terreno
       (varredura em passos de 0,15 m), pulo de 1,29 m, queda pousa no chão sem
       enterrar.*
+- [x] **[5a] Visão submersa com absorção por canal** — debaixo d'água a luz não
+      esmaece por igual: o vermelho é absorvido primeiro, o azul penetra mais
+      fundo. Os coeficientes seguem a ordem relativa dos Kd de Jerlov (água
+      tipo I–II), com o vermelho atenuando ~8× mais rápido que o azul. Fundo,
+      névoa e tinta de tela mudam junto.
 
 ---
 

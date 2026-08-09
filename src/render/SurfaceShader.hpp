@@ -33,6 +33,10 @@ public:
     // demais deixa a borda dos chunks aparecer como recorte reto.
     void SetFogDistance(float distance) const;
 
+    // Liga a absorcao seletiva por canal usada debaixo d'agua. Precisa do
+    // nivel do mar para saber a profundidade da coluna acima do fragmento.
+    void SetUnderwater(bool submerged, float seaLevel) const;
+
     bool IsValid() const;
 
     Shader Get() const { return shader_; }
@@ -42,6 +46,8 @@ private:
     int viewPositionLoc_ = -1;
     int lightDirectionLoc_ = -1;
     int fogDistanceLoc_ = -1;
+    int underwaterLoc_ = -1;
+    int seaLevelLoc_ = -1;
 };
 
 }  // namespace render

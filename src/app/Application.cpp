@@ -305,6 +305,8 @@ void Application::DrawSettingsPanel() {
 // justamente o visual pretendido, e assim ela nao precisa de normais.
 void Application::DrawWater() const {
     const float sea = generator_.Settings().seaLevel;
+    // Vista de baixo, a lamina precisa ser desenhada mesmo assim: e o "teto"
+    // da agua. Sem ela, olhar para cima submerso mostraria o ceu direto.
     const float extent =
         static_cast<float>(chunks_.ViewRadius()) * world::kChunkSize * 2.2f;
 
@@ -352,7 +354,7 @@ void Application::DrawHud() const {
     line(TextFormat("escavacoes: %d   ferramenta: %.1f",
                     static_cast<int>(chunks_.EditCount()), digRadius_),
          GRAY);
-    line(TextFormat("modo: %s%s", player_.Mode() == MoveMode::Walk ? "ANDANDO" : "espectador", player_.OnGround() ? "  (no chao)" : ""), player_.Mode() == MoveMode::Walk ? LIME : GRAY);
+    line(TextFormat("%smodo: %s%s", player_.IsSubmerged(generator_.Settings().seaLevel) ? "[SUBMERSO] " : "", player_.Mode() == MoveMode::Walk ? "ANDANDO" : "espectador", player_.OnGround() ? "  (no chao)" : ""), player_.Mode() == MoveMode::Walk ? LIME : GRAY);
 
     // Mira no centro da tela.
     const int cx = GetScreenWidth() / 2;
@@ -386,10 +388,18 @@ void Application::Run() {
         }
         shader_.SetFogDistance(view_.fogDistance);
 
+        // Submerso: o criterio e a posicao dos OLHOS, nao dos pes - e o olho
+        // que decide o que a tela mostra.
+        const float sea = generator_.Settings().seaLevel;
+        const bool submerso = player_.IsSubmerged(sea);
+        shader_.SetUnderwater(submerso, sea);
+
         BeginDrawing();
-        // Mesma cor da neblina do shader: o terreno distante dissolve no ceu
-        // em vez de terminar num recorte.
-        ClearBackground(Color{158, 189, 230, 255});
+        // Debaixo d'agua o "ceu" e a propria coluna de agua: o fundo tem de
+        // ser a cor da agua profunda, senao o horizonte submerso fica azul de
+        // ceu e denuncia que nao ha volume de agua nenhum.
+        ClearBackground(submerso ? Color{8, 42, 66, 255}
+                                 : Color{158, 189, 230, 255});
 
         BeginMode3D(camera_);
         chunks_.Draw(camera_, WHITE, wireframe_);
@@ -405,6 +415,13 @@ void Application::Run() {
         // preenchido para compor certo com o fundo do mar.
         DrawWater();
         EndMode3D();
+
+        // Tinta na tela inteira: e o que da a sensacao de estar DENTRO do
+        // meio, e nao apenas olhando atraves de um vidro azul.
+        if (submerso) {
+            DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
+                          Color{20, 90, 130, 70});
+        }
 
         DrawHud();
         DrawSettingsPanel();
