@@ -53,6 +53,7 @@ FetchContent_MakeAvailable(raylib raylib_cpp raygui)
 add_executable(${PROJECT_NAME}
     src/main.cpp
     src/app/Application.cpp
+    src/app/PlayerController.cpp
     src/field/MetaballField.cpp
     src/mc/Polygonizer.cpp
     src/mc/SampleGrid.cpp

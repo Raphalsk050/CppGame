@@ -96,10 +96,12 @@ Application::Application(const Options& options)
 
     // Comeca acima do nivel do chao, olhando para o horizonte.
     // Acima do relevo tipico (o terreno vai de ~51 a ~254 m, com o mar em 62).
-    // O valor anterior, 28, ficava ABAIXO do nivel do mar depois que a escala
-    // do mundo passou para metros - o jogo abria enterrado.
-    camera_.position = {0.0f, 210.0f, 0.0f};
-    camera_.target = {90.0f, 160.0f, 90.0f};
+    player_.SetPosition({0.0f, 210.0f, 0.0f});
+    player_.SetMode(MoveMode::Spectator);
+    lookDirection_ = Vector3Normalize({0.9f, -0.45f, 0.9f});
+
+    camera_.position = player_.EyePosition();
+    camera_.target = Vector3Add(camera_.position, lookDirection_);
     camera_.up = {0.0f, 1.0f, 0.0f};
     camera_.fovy = 70.0f;
     camera_.projection = CAMERA_PERSPECTIVE;
@@ -127,13 +129,12 @@ void Application::HandleInput() {
     }
 
     // ---- orientacao ------------------------------------------------------
-    Vector3 forward = Vector3Normalize(
-        Vector3Subtract(camera_.target, camera_.position));
+    Vector3 forward = lookDirection_;
 
     if (cursorCaptured_) {
         const Vector2 delta = GetMouseDelta();
 
-        // Yaw em torno do eixo vertical do mundo, nao do eixo local: sem isso
+        // Yaw em torno do eixo vertical do MUNDO, nao do eixo local: sem isso
         // a camera adquire roll e o horizonte entorta.
         forward = Vector3RotateByAxisAngle(forward, Vector3{0.0f, 1.0f, 0.0f},
                                            -delta.x * kMouseSensitivity);
@@ -150,31 +151,38 @@ void Application::HandleInput() {
             std::clamp(currentPitch + pitch, -limit, limit) - currentPitch;
         forward = Vector3RotateByAxisAngle(forward, right, clamped);
     }
+    lookDirection_ = Vector3Normalize(forward);
 
-    // ---- deslocamento ----------------------------------------------------
-    if (IsKeyDown(KEY_LEFT_SHIFT)) moveSpeed_ *= 1.0f + 2.0f * dt;
-    if (IsKeyDown(KEY_LEFT_CONTROL)) moveSpeed_ *= 1.0f - 2.0f * dt;
-    moveSpeed_ = std::clamp(moveSpeed_, kMinSpeed, kMaxSpeed);
-
-    const Vector3 flatForward = Vector3Normalize(
-        Vector3{forward.x, 0.0f, forward.z});
+    // ---- intencao de movimento -------------------------------------------
+    // A Application so diz PARA ONDE o jogador quer ir; quem decide se ele
+    // consegue - gravidade, colisao, degrau - e o PlayerController.
+    const Vector3 flatForward =
+        Vector3Normalize(Vector3{forward.x, 0.0f, forward.z});
     const Vector3 right =
         Vector3Normalize(Vector3CrossProduct(flatForward, Vector3{0, 1, 0}));
 
-    Vector3 move{0.0f, 0.0f, 0.0f};
-    if (IsKeyDown(KEY_W)) move = Vector3Add(move, flatForward);
-    if (IsKeyDown(KEY_S)) move = Vector3Subtract(move, flatForward);
-    if (IsKeyDown(KEY_D)) move = Vector3Add(move, right);
-    if (IsKeyDown(KEY_A)) move = Vector3Subtract(move, right);
-    if (IsKeyDown(KEY_SPACE)) move.y += 1.0f;
-    if (IsKeyDown(KEY_LEFT_ALT)) move.y -= 1.0f;
+    Vector3 wish{0.0f, 0.0f, 0.0f};
+    if (IsKeyDown(KEY_W)) wish = Vector3Add(wish, flatForward);
+    if (IsKeyDown(KEY_S)) wish = Vector3Subtract(wish, flatForward);
+    if (IsKeyDown(KEY_D)) wish = Vector3Add(wish, right);
+    if (IsKeyDown(KEY_A)) wish = Vector3Subtract(wish, right);
 
-    if (Vector3LengthSqr(move) > 0.0f) {
-        move = Vector3Scale(Vector3Normalize(move), moveSpeed_ * dt);
-        camera_.position = Vector3Add(camera_.position, move);
+    const bool jump = IsKeyDown(KEY_SPACE);
+    if (player_.Mode() == MoveMode::Spectator) {
+        // No espectador o espaco e o alt sobem e descem de verdade.
+        if (IsKeyDown(KEY_SPACE)) wish.y += 1.0f;
+        if (IsKeyDown(KEY_LEFT_ALT)) wish.y -= 1.0f;
     }
+    if (Vector3LengthSqr(wish) > 0.0f) wish = Vector3Normalize(wish);
 
-    camera_.target = Vector3Add(camera_.position, forward);
+    player_.Update(chunks_, wish, jump, IsKeyDown(KEY_LEFT_SHIFT), dt);
+
+    camera_.position = player_.EyePosition();
+    camera_.target = Vector3Add(camera_.position, lookDirection_);
+
+    // Alterna entre andar e voar. Ao cair no modo de caminhada em pleno ar, o
+    // jogador simplesmente cai - que e o comportamento esperado.
+    if (IsKeyPressed(KEY_G)) player_.ToggleMode();
 
     // ---- teclas de cena --------------------------------------------------
     if (IsKeyPressed(KEY_F)) wireframe_ = !wireframe_;
@@ -320,8 +328,8 @@ void Application::DrawHud() const {
     };
 
     line(TextFormat("%d FPS", GetFPS()), LIME);
-    line(TextFormat("pos  %.0f  %.0f  %.0f", camera_.position.x,
-                    camera_.position.y, camera_.position.z),
+    line(TextFormat("pos  %.0f  %.0f  %.0f", player_.Position().x,
+                    player_.Position().y, player_.Position().z),
          RAYWHITE);
     line(TextFormat("bioma: %s", biome.name), YELLOW);
     line(TextFormat("chunks: %d  (%d com malha)  raio %d", stats.loaded,
@@ -344,7 +352,7 @@ void Application::DrawHud() const {
     line(TextFormat("escavacoes: %d   ferramenta: %.1f",
                     static_cast<int>(chunks_.EditCount()), digRadius_),
          GRAY);
-    line(TextFormat("velocidade: %.0f", moveSpeed_), GRAY);
+    line(TextFormat("modo: %s%s", player_.Mode() == MoveMode::Walk ? "ANDANDO" : "espectador", player_.OnGround() ? "  (no chao)" : ""), player_.Mode() == MoveMode::Walk ? LIME : GRAY);
 
     // Mira no centro da tela.
     const int cx = GetScreenWidth() / 2;

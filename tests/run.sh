@@ -13,7 +13,10 @@ fi
 
 FRAMEWORKS="-framework CoreVideo -framework IOKit -framework Cocoa -framework GLUT -framework OpenGL"
 FONTES="src/world/TerrainGenerator.cpp src/world/Noise.cpp \
-        src/mc/Polygonizer.cpp src/mc/SampleGrid.cpp src/mc/Tables.cpp"
+        src/mc/Polygonizer.cpp src/mc/SampleGrid.cpp src/mc/Tables.cpp
+        src/world/Chunk.cpp src/world/ChunkBuilder.cpp src/world/ChunkManager.cpp
+        src/world/TerrainEdits.cpp src/render/Frustum.cpp
+        src/render/DynamicMesh.cpp src/app/PlayerController.cpp"
 falhas=0
 
 for teste in tests/*_validation.cpp; do

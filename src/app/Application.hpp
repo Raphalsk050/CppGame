@@ -3,6 +3,7 @@
 #include <string>
 
 #include "raylib-cpp.hpp"
+#include "app/PlayerController.hpp"
 #include "render/SurfaceShader.hpp"
 #include "ui/SettingsPanel.hpp"
 #include "world/ChunkManager.hpp"
@@ -61,6 +62,11 @@ private:
     world::TerrainSettings draft_{};
     ui::ViewSettings view_{};
     std::string status_;
+
+    PlayerController player_;
+    // Direcao de visada, guardada a parte: a camera passa a ser derivada da
+    // posicao do jogador mais a altura dos olhos.
+    Vector3 lookDirection_{1.0f, 0.0f, 1.0f};
 
     bool wireframe_ = false;
     bool cursorCaptured_ = true;

@@ -45,6 +45,13 @@ screenshot conferido ou medição. "Compilou" não conta como pronto.
       4,84 m e a saia cobre 10 m.
       *Validado: 2952 → 46 triângulos do LOD0 ao LOD3 (corte de 98%, razão de
       4× por nível como esperado).*
+- [x] **[6] Player controller** — colisão contra o **campo escalar**, não
+      contra a malha (a malha está na GPU e fatiada; o campo responde em
+      qualquer ponto, inclusive onde nenhum chunk foi gerado). Gravidade, pulo,
+      degrau automático de 0,6 m, e **modo espectador** na tecla `G`.
+      *Validado: 0 de 60 corridas em velocidade alta atravessaram terreno
+      (varredura em passos de 0,15 m), pulo de 1,29 m, queda pousa no chão sem
+      enterrar.*
 
 ---
 
@@ -253,7 +260,7 @@ Classificação de **Jerlov** para tipos de água (I, IA, IB, II, III oceânicas
 Fontes: [Jerlov water types — IOPs](https://www.researchgate.net/publication/364766106_Measured_IOPs_of_Jerlov_water_types),
 [Light in the Ocean (LibreTexts)](https://geo.libretexts.org/Bookshelves/Oceanography/Introduction_to_Physical_Oceanography_(Stewart)/06:_Temperature_Salinity_and_Density/6.10:_Light_in_the_Ocean_and_Absorption_of_Light)
 
-## 6. Player controller
+## 6. Player controller — CONCLUÍDO
 
 - [ ] Colisão contra o **campo escalar**, não contra a malha (o campo é
       consultável em qualquer ponto; a malha está na GPU e fatiada)

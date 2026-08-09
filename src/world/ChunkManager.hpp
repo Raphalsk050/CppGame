@@ -55,6 +55,15 @@ public:
 
     bool Raycast(Vector3 origin, Vector3 direction, float maxDistance,
                  Vector3& hitPoint) const;
+
+    // Densidade num ponto qualquer, ja com as escavacoes. Negativo e solido.
+    // Publico porque a colisao do jogador testa o CAMPO, nao a malha: a malha
+    // esta na GPU e fatiada em chunks que aparecem e somem com o streaming,
+    // enquanto o campo responde em qualquer lugar - inclusive onde nenhum
+    // chunk foi gerado ainda.
+    float DensityAt(Vector3 p) const {
+        return generator_->Sample(p) + edits_.DeltaAt(p);
+    }
     void ApplyEdit(const SphereEdit& edit);
 
     std::size_t EditCount() const { return edits_.Count(); }
